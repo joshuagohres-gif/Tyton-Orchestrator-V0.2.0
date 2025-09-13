@@ -137,6 +137,16 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
     }
   }, [project.connections, setEdges]);
 
+  const createModuleMutation = useMutation({
+    mutationFn: async (moduleData: any) => {
+      const response = await apiRequest("POST", `/api/projects/${project.id}/modules`, moduleData);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id] });
+    },
+  });
+
   const createConnectionMutation = useMutation({
     mutationFn: async (connection: Connection) => {
       const sourceNode = nodes.find(n => n.id === connection.source);
@@ -199,6 +209,74 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
       setSelectedNode(selectedNodes[0] || null);
     },
     []
+  );
+
+  // Handle drag over to allow dropping
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  // Handle component drop from library
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      
+      const draggedComponent = (window as any).draggedComponent;
+      if (!draggedComponent) return;
+
+      // Get the canvas bounds to calculate position
+      const reactFlowBounds = (event.target as Element).closest('.react-flow')?.getBoundingClientRect();
+      if (!reactFlowBounds) return;
+
+      const position = {
+        x: event.clientX - reactFlowBounds.left,
+        y: event.clientY - reactFlowBounds.top,
+      };
+
+      const newNodeId = `node_${Date.now()}`;
+      const newNode: Node = {
+        id: newNodeId,
+        type: 'hardwareModule',
+        position,
+        data: {
+          label: draggedComponent.name,
+          category: draggedComponent.category,
+          status: 'validated',
+          ports: [
+            { id: 'gpio0', label: 'GPIO0', type: 'data', direction: 'output' },
+            { id: 'gpio2', label: 'GPIO2', type: 'data', direction: 'output' },
+            { id: '3v3', label: '3.3V', type: 'power', direction: 'output' },
+            { id: 'gnd', label: 'GND', type: 'power', direction: 'output' },
+          ],
+          moduleId: newNodeId,
+          componentId: draggedComponent.id,
+        },
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+
+      // Create project module in database
+      createModuleMutation.mutate({
+        nodeId: newNodeId,
+        label: draggedComponent.name,
+        componentId: draggedComponent.id,
+        position,
+        projectId: project.id,
+      });
+
+      // Broadcast the new node to other users
+      sendMessage({
+        type: 'canvas_update',
+        action: 'node_created',
+        data: newNode,
+        projectId: project.id,
+      });
+
+      // Clear the dragged component
+      delete (window as any).draggedComponent;
+    },
+    [setNodes, createModuleMutation, sendMessage, project.id]
   );
 
   // Handle real-time updates from other users
@@ -307,6 +385,8 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
         onConnect={onConnect}
         onNodeDragStop={onNodeDragStop}
         onSelectionChange={onSelectionChange}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
         nodeTypes={nodeTypes}
         connectionMode={ConnectionMode.Loose}
         fitView
