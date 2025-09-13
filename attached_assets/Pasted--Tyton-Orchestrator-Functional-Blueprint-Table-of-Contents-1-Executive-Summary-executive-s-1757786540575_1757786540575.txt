@@ -1,0 +1,774 @@
+# Tyton Orchestrator Functional Blueprint
+
+## Table of Contents
+
+1. [Executive Summary](#executive-summary)
+2. [Information Architecture & Navigation](#information-architecture--navigation)
+3. [UX Blueprints (Screen-by-Screen)](#ux-blueprints-screen-by-screen)
+4. [End-to-End Workflows](#end-to-end-workflows)
+5. [Data Model (Conceptual)](#data-model-conceptual)
+6. [API Surface (Functional)](#api-surface-functional)
+7. [Orchestration Semantics](#orchestration-semantics)
+8. [EDA & Circuit Capabilities](#eda--circuit-capabilities)
+9. [Security & Identity](#security--identity)
+10. [Observability & Ops](#observability--ops)
+11. [Functional Non-Goals & Assumptions](#functional-non-goals--assumptions)
+12. [Rebuild-From-Scratch Playbook](#rebuild-from-scratch-playbook)
+13. [Glossary](#glossary)
+
+## 1. Executive Summary
+
+**Stack Detected**: Node.js v20.19.3, npm 10.8.2, pnpm 10.12.4, TypeScript, SQLite→PostgreSQL migration path
+
+Tyton Alpha is a comprehensive AI-powered hardware design orchestration platform that enables researchers and engineers to design, validate, and manufacture electronic systems through an automated multi-stage pipeline. The platform combines academic research collaboration tools with cutting-edge AI capabilities for hardware project design, circuit generation, and component sourcing.
+
+**Primary Actors/Roles**:
+- **Unauthenticated Visitor**: Can browse public projects and documentation
+- **Authenticated User**: Can create projects, run orchestrations, access LLM features  
+- **Project Editor**: Full CRUD on projects, orchestration control, export capabilities
+- **Admin** (Assumption): System administration, user management, API key management
+
+**Top Outcomes**:
+- Orchestrate end-to-end hardware design projects from concept to manufacturing
+- Generate circuit schematics, PCB layouts, and firmware automatically via LLM integration
+- Export production-ready artifacts (KiCad files, DSN, GLB, netlists, BOMs)
+- Source components with real-time pricing and availability data
+- Collaborate in real-time on hardware designs with progress tracking
+
+## 2. Information Architecture & Navigation
+
+**Evidence**: Dual architecture with Express.js backend (`start-all.js`, `index.js`) and Next.js frontend (`tyton-orchestrator/`)
+
+### Top-Level Routes & Screens
+
+| Route | Purpose | Key Widgets | Entry Points | Exit Points |
+|-------|---------|-------------|--------------|-------------|
+| `/` (Home) | Landing page, project overview | Project grid, create button, stats | Direct URL, auth redirect | `/projects/[id]`, `/login` |
+| `/projects` | Project listing and management | Project cards, filters, search | Home, navbar | Individual projects |
+| `/projects/[id]` | Project detail and orchestration | Canvas, orchestrator panel, modules | Project list, deep links | Sub-panels, exports |
+| `/projects/[id]/schematic` | Circuit schematic view | SchematicDiagram component | Project canvas | Component editing |
+| `/projects/[id]/eda` | EDA processing dashboard | EdaStepper, validation results | Orchestration flow | Export formats |
+| `/admin/health` | System health monitoring | Metrics dashboard, service status | Admin nav | System logs |
+| `/login`, `/auth/*` | Authentication flows | OAuth buttons, forms | Unauthenticated access | Authenticated home |
+
+**Evidence Files**: 
+- `tyton-orchestrator/app/projects/[id]/page.tsx` - Main project interface
+- `tyton-orchestrator/components/SchematicDiagram.tsx` - Circuit visualization
+- `tyton-orchestrator/app/components/eda/EdaStepper.tsx` - EDA workflow
+
+## 3. UX Blueprints (Screen-by-Screen)
+
+### Project Canvas (`tyton-orchestrator/components/ProjectCanvas.tsx`)
+
+**Goal**: Visual project design through node-based interface with real-time collaboration
+
+**Layout**: 
+- Main canvas area with React Flow nodes/edges
+- Left sidebar with component palette and tools  
+- Right sidebar with properties panel and orchestration controls
+- Top toolbar with zoom, save, export actions
+
+**Core Interactions**:
+- Drag/drop components from palette to canvas
+- Connect nodes by dragging edges between ports
+- Select nodes to edit properties in sidebar
+- Right-click context menus for actions
+- Zoom/pan with mouse and keyboard shortcuts
+
+**States**: `loading | empty | editing | readonly | processing | error`
+
+**Realtime Cues**: 
+- Presence indicators for other users
+- Live cursor tracking during collaboration
+- Progress indicators during orchestration stages
+- Status badges on nodes (validated, error, processing)
+
+**Evidence**: Uses `@xyflow/react` v12.8.4, Yjs v13.6.27 for collaboration
+
+### Orchestration Progress Panel (`tyton-orchestrator/components/OrchestrationProgressIndicator.tsx`)
+
+**Goal**: Monitor and control multi-stage AI orchestration pipeline
+
+**Layout**:
+- Vertical stage list with status indicators
+- Progress bars for current stage execution
+- Control buttons (pause, resume, cancel)
+- Error/warning panels with expandable details
+- Review gates with approve/reject actions
+
+**Core Interactions**:
+- Click stages to view detailed logs and outputs
+- Approve/reject review gates for human-in-the-loop validation
+- Retry failed stages with different parameters
+- Export intermediate and final results
+
+**States**: `idle | running | paused | waiting_review | error | completed | cancelled`
+
+**Evidence**: `tyton-orchestrator/server/orchestrator/state/tytonMachine.ts` - XState v5.21.0 orchestration
+
+### EDA Stepper (`tyton-orchestrator/app/components/eda/EdaStepper.tsx`)
+
+**Goal**: Guide users through electronic design automation workflow
+
+**Layout**: 
+- Horizontal stepper with validation status
+- Stage-specific content panels
+- Validation results with error highlighting
+- Export options for each completed stage
+
+**Core Interactions**:
+- Step through: Circuit → Netlist → Footprint → Layout → Export
+- Fix validation errors inline
+- Preview generated artifacts before export
+- Batch export to multiple formats
+
+**Evidence**: EDA routes in `tyton-orchestrator/app/api/eda/` directory
+
+### Realtime Collaboration Panel
+
+**Goal**: Enable live co-editing and communication
+
+**Layout**: 
+- Active users list with avatars
+- Presence indicators on canvas elements
+- Live changes feed
+- Conflict resolution interface
+
+**Evidence**: `tyton-orchestrator/server/realtime/wsServer.ts`, Y.js integration
+
+### Theming: "Starry Night" Design System
+
+**Evidence**: `tyton-orchestrator/tailwind.config.ts`, theme test files
+
+**Core Tokens**:
+- **Primary**: Gold/amber accents (#FFD700, #FFA500) 
+- **Background**: Deep space blacks (#000000, #0A0A0A)
+- **Surface**: Dark grays with subtle gradients
+- **Interactive**: Gold hover states with glow effects
+
+**Accessibility**: 
+- High contrast ratios for WCAG AA compliance
+- Focus rings with gold accent colors
+- Keyboard navigation support
+- Reduced motion mode for performance-sensitive users
+
+**Performance Constraints**:
+- Code-split heavy React Flow components
+- Virtualized lists for large component libraries  
+- Web Workers for ELK layout calculations
+- Throttled WebSocket updates to prevent UI blocking
+
+## 4. End-to-End Workflows
+
+### Primary Flow: AI-Orchestrated Hardware Design
+
+**Preconditions**: Authenticated user with available LLM budget
+
+**Trigger**: User clicks "Start Orchestration" on project
+
+**Happy Path**:
+1. **Project Brief** → User provides requirements text input
+2. **Circuit Generation** → LLM generates schematic specification (see `lib/prompts/p7_circuit.ts`)
+3. **Component Selection** → Database lookup + heuristic matching + LLM enhancement
+4. **EDA Enrichment** → Footprint assignment, pin mapping, validation (see `server/orchestrator/edaEnrichStage.ts`)
+5. **Layout Generation** → ELK.js automatic placement and routing
+6. **Validation** → ERC/DRC checks with failure gating (see `server/services/eda/validateEda.ts`)
+7. **Export Generation** → Multi-format output (KiCad, DSN, GLB, netlist)
+8. **BOM Creation** → Component sourcing with real-time pricing
+9. **Review Gate** → Human approval for safety-critical designs
+10. **Completion** → Downloadable artifacts and project archive
+
+**Notable Edge Cases**:
+- Component unavailability → Automatic alternative suggestion
+- ERC/DRC failures → Interactive fixing with LLM suggestions  
+- Review rejection → Rollback to previous stage with feedback integration
+- Budget exhaustion → Graceful degradation to manual modes
+
+**Evidence**: Orchestration machine in `server/orchestrator/state/tytonMachine.ts`, stage registry in `server/orchestrator/state/stageRegistry.ts`
+
+### Circuit Export Workflow  
+
+**Trigger**: User selects export format from completed project
+
+**Process**:
+1. **Validation Check** → Ensure ERC/DRC compliance (hard failures block export)
+2. **Format Selection** → KiCad (.sch/.pcb/.pro), DSN, GLB, or Netlist
+3. **Artifact Generation** → Server-side format conversion
+4. **Packaging** → ZIP archive with all related files
+5. **Download** → Client receives production-ready files
+
+**Evidence**: Export routes in `tyton-orchestrator/app/api/eda/export/` directory
+
+### Real-time Collaboration Workflow
+
+**Trigger**: Multiple users open same project simultaneously
+
+**Process**:
+1. **Presence Establishment** → WebSocket connection with user metadata
+2. **State Synchronization** → Yjs CRDT for conflict-free canvas updates  
+3. **Live Updates** → Real-time cursor positions and node manipulations
+4. **Conflict Resolution** → Automatic merge with manual review for complex conflicts
+
+**Evidence**: `tyton-orchestrator/server/realtime/wsServer.ts`, Y.js integration
+
+## 5. Data Model (Conceptual)
+
+**Evidence**: `tyton-orchestrator/prisma/schema.prisma` - SQLite with PostgreSQL migration path
+
+### Core Entities
+
+**Project**
+- **Purpose**: Container for hardware design with versioning and metadata
+- **Key Attributes**: `id (cuid)`, `title`, `description`, `userId`, `status`, `canvasJson`, `llmBudget`
+- **Relationships**: `hasMany(Module, Connection, PromptRun, BomItem, AuditLog)`
+
+**OrchestratorRun** (Inferred from API routes)
+- **Purpose**: Tracks orchestration pipeline execution state
+- **Key Attributes**: `id`, `projectId`, `status`, `contextJson`, `createdAt`, `updatedAt`
+- **Relationships**: `belongsTo(Project)`, `hasMany(StageRun, ReviewGate)`
+
+**StageRun** (Inferred from orchestrator tests)
+- **Purpose**: Individual stage execution within orchestration pipeline
+- **Key Attributes**: `orchestratorId`, `stageId`, `status`, `attempts`, `inputJson`, `outputJson`, `errorMessage`
+
+**Module** 
+- **Purpose**: Hardware components with firmware and testing metadata
+- **Key Attributes**: `projectId`, `kind`, `label`, `componentRef`, `firmwareCode`, `testingMd`
+- **Constraints**: Unique per project+kind
+
+**Connection**
+- **Purpose**: Wiring relationships between modules
+- **Key Attributes**: `projectId`, `fromModuleId`, `toModuleId`, `type`, `label`
+
+**ComponentLibrary** (Evidence from seed script)
+- **Purpose**: Searchable component database with specifications
+- **Key Attributes**: `mpn`, `manufacturer`, `description`, `footprint`, `specs`
+
+**BomItem**
+- **Purpose**: Bill of materials with sourcing data
+- **Key Attributes**: `projectId`, `mpn`, `quantity`, `unitPrice`, `supplier`
+
+**ReviewGate** (Inferred from review API)
+- **Purpose**: Human approval checkpoints in orchestration
+- **Key Attributes**: `orchestratorId`, `stageId`, `status`, `notes`, `payloadJson`
+
+### Persistence Strategy
+
+**Database**: SQLite (development) → PostgreSQL (production) via Prisma
+**Indices**: Project lookups, orchestrator status queries, component search
+**Caching**: Redis for LLM responses, component pricing, layout calculations (inferred from Redis dependency)
+**Archival**: Long-running orchestrations archived after completion (Assumption)
+
+**Evidence**: Prisma client in dependencies, migration scripts in `scripts/` directory
+
+## 6. API Surface (Functional)
+
+**Evidence**: Comprehensive API routes in `tyton-orchestrator/app/api/` directory
+
+### Orchestration Control
+
+**POST `/api/projects/[id]/orchestrator/start`**
+- **Intent**: Initialize orchestration pipeline for project
+- **Auth**: Authenticated user with project access
+- **Request**: `{ userBrief: string, userInputMessage?: string }`
+- **Response**: `{ orchestratorId: string, status: "running" }`
+- **Errors**: `409` if already running, `402` if insufficient LLM budget
+
+**PUT `/api/projects/[id]/orchestrator/control`**  
+- **Intent**: Control running orchestration (pause/resume/cancel)
+- **Request**: `{ action: "pause" | "resume" | "cancel", reason?: string }`
+- **Response**: `{ success: true, action: string }`
+
+**GET `/api/projects/[id]/orchestrator/status`**
+- **Intent**: Real-time orchestration status and progress
+- **Response**: `{ status, currentStage, progress, logs, availableActions }`
+
+**POST `/api/projects/[id]/orchestrator/review`**
+- **Intent**: Human approval/rejection of review gates
+- **Request**: `{ action: "approve" | "reject", reviewId: string, notes?: string }`
+
+### EDA Export Pipeline
+
+**POST `/api/eda/export/kicad`**
+- **Intent**: Generate KiCad project files (.sch, .pcb, .pro)
+- **Request**: `{ projectId: string, schematicSpec: SchematicSpecV12 }`
+- **Response**: `{ downloadUrl: string, files: string[] }`
+- **Errors**: `422` on hard ERC/DRC failures
+
+**POST `/api/eda/export/dsn`**
+- **Intent**: Export Specctra DSN format for external layout tools
+- **Response**: Binary DSN file with component placement and routing
+
+**POST `/api/eda/export/glb`**  
+- **Intent**: 3D board preview in GLB format
+- **Response**: GLB file for 3D visualization
+
+**POST `/api/eda/export/netlist`**
+- **Intent**: Circuit netlist for simulation tools
+- **Response**: Standard netlist format with component connections
+
+### Component & Sourcing
+
+**GET `/api/components/search`**
+- **Intent**: Search component library with fuzzy matching
+- **Request**: `{ query: string, filters?: ComponentFilters }`
+- **Response**: `{ components: Component[], total: number }`
+
+**GET `/api/projects/[id]/bom`**
+- **Intent**: Generate BOM with real-time pricing
+- **Response**: `{ items: BomItem[], totalCost: number, availability: object }`
+
+### Real-time Communications
+
+**WebSocket `/api/realtime/upgrade`**
+- **Intent**: Upgrade HTTP to WebSocket for live collaboration
+- **Messages**: 
+  - `orchestration_progress`: Stage status updates
+  - `canvas_update`: Real-time node/edge changes  
+  - `user_presence`: Cursor positions and active users
+  - `validation_result`: Live ERC/DRC feedback
+
+**Evidence**: WebSocket server at `tyton-orchestrator/server/realtime/wsServer.ts`
+
+### Health & Metrics
+
+**GET `/api/health/live`** - Basic liveness check
+**GET `/api/health/ready`** - Readiness with dependency checks  
+**GET `/api/health/comprehensive`** - Full system health dashboard
+**GET `/api/metrics`** - Prometheus-style metrics export
+
+## 7. Orchestration Semantics
+
+**Evidence**: XState v5.21.0 machine definition, advanced validation system
+
+### Stage Dependencies & Execution
+
+**DAG Structure**: Stages form directed acyclic graph with dependencies (see `server/orchestrator/state/dag.ts`)
+- **Circuit Generation** → **Component Selection** → **EDA Enrichment** → **Layout** → **Validation** → **Export**
+- **Parallel Execution**: Independent stages run concurrently when dependencies satisfied
+- **Resume/Retry**: Failed stages can restart from checkpoints without re-running dependencies
+
+### State Machine Semantics
+
+**States**: `idle → running → [waiting_review] → completed | error | cancelled`
+
+**Events**:
+- `START` - Initiate orchestration pipeline
+- `STAGE_COMPLETE` - Mark stage as finished with outputs
+- `STAGE_FAILED` - Handle failures with retry logic
+- `PAUSE/RESUME` - User-controlled execution flow
+- `REVIEW_APPROVED/REJECTED` - Human-in-the-loop gate resolution
+- `CANCEL` - Graceful termination with cleanup
+
+### Self-Healing & Recovery
+
+**Error Taxonomy** (Evidence from retry specs):
+- **Transient**: Network timeouts, rate limits → Exponential backoff retry
+- **Validation**: ERC/DRC failures → Interactive fixing with LLM suggestions  
+- **Resource**: Component unavailability → Alternative suggestion pipeline
+- **Critical**: System errors → Manual intervention required
+
+**Circuit Breakers**: LLM API protection with Redis-backed state tracking
+**Rate Limits**: Sliding window rate limiting for API calls and orchestration starts
+
+### Budget Management
+
+**LLM Cost Tracking**: Per-project token consumption monitoring (see `llmBudget` field)
+**Budget Enforcement**: Orchestration halts when budget exhausted
+**Cost Estimation**: Provide upfront cost estimates for orchestration runs
+
+**Evidence**: Budget tracking in Project model, LLM integration in `server/` directory
+
+## 8. EDA & Circuit Capabilities
+
+**Evidence**: Comprehensive EDA pipeline in `server/services/eda/` directory
+
+### Input Formats & Validation
+
+**SchematicSpec v1.2**: JSON-based circuit specification format
+- **Components**: `{ ref, mpn?, value?, role?, symbol?, footprint?, orientation_deg?, attributes? }`
+- **Nets**: Connection definitions between component pins
+- **Constraints**: Electrical rules and layout constraints
+- **Validation**: Zod schema enforcement with detailed error reporting
+
+**Ingestion Pipeline** (`/api/eda/ingest`):
+1. Parse and validate incoming specifications
+2. Normalize component references and pin mappings
+3. Generate internal circuit representation
+4. Validate electrical rules (ERC checks)
+
+### Component Resolution Pipeline
+
+**Mapping Priority** (Evidence from `mapFromSchematic.ts`):
+1. **Exact MPN Match**: Direct database lookup by manufacturer part number
+2. **Heuristic Matching**: Fuzzy search on value, package, electrical characteristics  
+3. **LLM Enhancement**: JSON patch generation for missing or ambiguous components
+4. **Fallback**: Manual component selection with guided recommendations
+
+**Database Schema**: Searchable component library with specifications, footprints, pricing
+
+### Circuit Generation & Validation
+
+**ERC (Electrical Rules Check)** (`server/services/eda/validation/erc.ts`):
+- Pin connectivity validation
+- Power/ground network integrity  
+- Unconnected pin warnings
+- Electrical type compatibility
+
+**DRC (Design Rules Check)** (`server/services/eda/validation/drc.ts`):
+- Minimum trace width enforcement
+- Via size and spacing rules
+- Component placement clearances
+- Manufacturing design rules
+
+**Hard vs Soft Failures**: 
+- **Hard**: Block export until resolved (shorts, unconnected power)
+- **Soft**: Warnings that don't prevent export (cosmetic issues)
+
+### Layout Generation
+
+**Layout Engine**: ELK.js (Eclipse Layout Kernel) for automatic placement and routing
+**Algorithms**: 
+- **Placement**: Hierarchical force-directed layout with electrical grouping
+- **Routing**: Shortest path with obstacle avoidance and design rule compliance
+- **Optimization**: Iterative improvement for trace length and layer usage
+
+**Client vs Server**: Layout calculation offloaded to server-side workers for performance
+
+**Evidence**: `server/services/elk.ts`, `server/services/fallbackLayout.ts`, layout worker specs
+
+### Export Capabilities
+
+**KiCad Integration** (`server/services/eda/generateKiCad.ts`):
+- `.sch` files with component symbols and connections
+- `.pcb` files with footprints and routing
+- `.pro` project files with settings and libraries
+
+**DSN Export** (`server/services/eda/generateDSN.ts`):
+- Specctra DSN format for external layout tools
+- Component placement and routing constraints
+- Layer stackup and design rules
+
+**GLB 3D Preview**: 
+- 3D board visualization for design review
+- Component models and PCB thickness
+- Real-time updates during layout changes
+
+**Netlist Generation**: 
+- Standard netlist format for simulation tools
+- SPICE-compatible component models
+- Hierarchical circuit representation
+
+## 9. Security & Identity
+
+**Evidence**: JWT authentication, RBAC system, rate limiting infrastructure
+
+### Authentication Model
+
+**Strategies** (Evidence from Express backend):
+- **Local**: Email/password with bcrypt hashing
+- **OAuth**: Google OAuth 2.0 integration via Passport.js
+- **API Keys**: Server-to-server authentication for automation
+
+**Session Management**:
+- **JWT Tokens**: Stateless authentication with configurable expiration
+- **Refresh Tokens**: Long-lived tokens for session renewal
+- **RBAC**: Role-based access control with project-level permissions
+
+### Authorization & Access Control
+
+**User Roles** (Inferred from auth specs):
+- **viewer**: Read-only access to public projects
+- **editor**: Full project CRUD, orchestration control
+- **admin**: User management, system administration
+
+**Project-Level Permissions**:
+- **owner**: Full control including deletion and sharing
+- **collaborator**: Edit access with orchestration permissions
+- **viewer**: Read-only access to shared projects
+
+### Security Middleware & Protection
+
+**Rate Limiting** (`server/security/rateLimit.ts`):
+- Redis sliding window implementation
+- Per-user and per-IP limits
+- Different limits for orchestration vs API calls
+
+**Input Validation**:
+- Zod schema validation on all API endpoints
+- XSS prevention with proper output encoding
+- SQL injection protection via Prisma ORM
+
+**CORS Configuration**: 
+- Configured for Replit deployment environment
+- Restricted origins in production
+- Credentials handling for cross-origin requests
+
+### Secrets Management
+
+**Environment Variables Required**:
+- `OPENAI_API_KEY` - LLM integration
+- `ANTHROPIC_API_KEY` - Secondary LLM provider  
+- `JWT_SECRET` - Token signing
+- `GOOGLE_CLIENT_ID/SECRET` - OAuth integration
+- `DATABASE_URL` - Database connection
+- `REDIS_URL` - Caching and rate limiting
+
+**Security Practices**:
+- Server-only API key usage (never exposed to client)
+- Secure cookie configuration for sessions
+- Environment-specific configuration management
+
+## 10. Observability & Ops
+
+**Evidence**: Health endpoints, metrics integration, comprehensive test suite
+
+### Health Monitoring
+
+**Health Endpoints**:
+- **`/api/health/live`**: Basic liveness (200 OK response)
+- **`/api/health/ready`**: Readiness with dependency checks (DB, Redis, LLM APIs)
+- **`/api/health/comprehensive`**: Full system dashboard with metrics
+
+**Health Check Components**:
+- Database connectivity and query performance
+- Redis cache availability and latency  
+- LLM API reachability and rate limit status
+- File system permissions for exports
+- WebSocket server status
+
+### Metrics & Telemetry
+
+**OpenTelemetry Integration** (Evidence from monitoring setup):
+- **Spans**: Orchestration stage execution, LLM calls, database queries
+- **Attributes**: Project metadata, stage types, error classifications
+- **Distributed Tracing**: Request flow across microservices
+
+**Key Metrics**:
+- **Orchestration**: Stage success rates, execution duration, retry counts
+- **Performance**: API response times, database query latency, export generation time
+- **Resource Usage**: LLM token consumption, Redis memory usage, active WebSocket connections
+- **Business**: Project creation rate, orchestration completion rate, export downloads
+
+### Error Tracking & Debugging
+
+**Error Categories**:
+- **User Errors**: Invalid inputs, insufficient permissions, budget limits
+- **System Errors**: Database failures, LLM API errors, export generation failures  
+- **Infrastructure**: Network timeouts, service unavailability, resource exhaustion
+
+**Logging Strategy** (Evidence from Pino logger):
+- **Structured Logging**: JSON format with consistent field names
+- **Log Levels**: Error, warn, info, debug with configurable verbosity
+- **Context Preservation**: Request IDs, user IDs, project IDs throughout request lifecycle
+
+### Performance Budgets & Constraints
+
+**Frontend Performance**:
+- Code splitting for React Flow components (lazy loading)
+- Virtualized lists for component libraries (1000+ items)
+- WebWorker offloading for ELK layout calculations
+- Throttled WebSocket updates (max 60fps for canvas updates)
+
+**Backend Performance**:
+- Database connection pooling (10 concurrent connections)
+- Redis caching for LLM responses (24h TTL)
+- Rate limiting to prevent resource exhaustion
+- Background job queues for export generation
+
+**Animation Constraints**:
+- 60fps target for canvas interactions
+- Reduced motion mode for accessibility
+- GPU acceleration for smooth panning/zooming
+- Optimized SVG rendering for circuit diagrams
+
+## 11. Functional Non-Goals & Assumptions
+
+### Explicitly Out of Scope
+
+1. **Physical Manufacturing**: Platform stops at design files; no fab house integration
+2. **Multi-PCB Systems**: Single board designs only in current scope
+3. **Analog Simulation**: Digital circuits only; no SPICE integration
+4. **Real-time Collaboration Conflict Resolution**: Basic CRDT merge; complex conflicts require manual resolution
+5. **Mobile Apps**: Web-only platform; responsive design for tablets but no native apps
+6. **Version Control**: No Git-like branching; linear project history only
+7. **Market Integration**: No direct component purchasing; BOM export only
+
+### Key Assumptions Used
+
+1. **Component Database**: Assumed comprehensive component library with 100k+ parts and regular updates
+2. **LLM Reliability**: Assumed 95%+ success rate for circuit generation with human review gates
+3. **User Expertise**: Target users have basic electronics knowledge; not intended for complete beginners
+4. **Network Connectivity**: Assumed stable internet for LLM API calls and real-time features
+5. **Browser Support**: Modern browsers with WebSocket and Web Worker support
+6. **File Size Limits**: Assumed projects under 100MB; no large file upload support
+7. **Concurrent Users**: Designed for 100 concurrent users per instance; no auto-scaling
+8. **Backup Strategy**: Assumed external backup system; platform doesn't include built-in backup/restore
+
+### Unknown Areas Requiring Clarification
+
+1. **Licensing Model**: Free tier limits vs paid features unclear
+2. **Data Retention**: Project storage duration and deletion policies undefined
+3. **API Rate Limits**: Specific rate limiting thresholds not documented
+4. **Component Licensing**: Unclear how component library licensing affects exports
+5. **Multi-tenancy**: Single vs multi-tenant deployment architecture unclear
+6. **Internationalization**: UI localization support not evident in codebase
+
+## 12. Rebuild-From-Scratch Playbook
+
+### Recommended Stack
+
+**Frontend**: 
+- Next.js 14 with App Router for modern React patterns
+- TypeScript for type safety across large codebase
+- TailwindCSS for rapid, consistent styling
+- React Flow for node-based visual interface
+- Zustand for lightweight state management
+
+**Backend**:
+- Next.js API routes for tight frontend integration
+- Prisma ORM for type-safe database operations
+- XState for complex orchestration state management
+- Redis for caching and rate limiting
+- WebSocket integration for real-time features
+
+**Database**: 
+- PostgreSQL for production with proper relations
+- SQLite for development simplicity
+- Prisma migrations for schema evolution
+
+**External Services**:
+- OpenAI API for primary LLM integration
+- Anthropic API for fallback/comparison
+- Redis Cloud for caching infrastructure
+
+### High-Level File Layout
+
+```
+/
+├── tyton-orchestrator/           # Next.js frontend + API
+│   ├── app/                      # App Router pages and API routes
+│   │   ├── api/                  # API endpoints
+│   │   │   ├── projects/         # Project CRUD
+│   │   │   ├── orchestrator/     # Orchestration control
+│   │   │   ├── eda/             # EDA processing
+│   │   │   └── realtime/        # WebSocket upgrade
+│   │   ├── projects/            # Project pages
+│   │   └── components/          # React components
+│   ├── components/              # Shared UI components
+│   │   ├── ui/                  # Basic UI primitives
+│   │   ├── nodes/               # React Flow node types
+│   │   └── canvas/              # Canvas-specific components
+│   ├── server/                  # Server-side logic
+│   │   ├── orchestrator/        # XState machine definition
+│   │   ├── services/            # Business logic services
+│   │   ├── validation/          # Schema validation
+│   │   └── realtime/            # WebSocket handling
+│   ├── lib/                     # Utilities and helpers
+│   └── tests/                   # Test suites
+├── prisma/                      # Database schema and migrations
+├── scripts/                     # Deployment and utility scripts
+└── docs/                        # Documentation
+```
+
+### Boot Sequence
+
+1. **Environment Setup**: Load environment variables, validate required secrets
+2. **Database Migration**: Run Prisma migrations, seed component library if empty
+3. **Service Initialization**: Start Redis connection, validate external API access
+4. **WebSocket Server**: Initialize real-time collaboration infrastructure  
+5. **Health Checks**: Verify all dependencies before accepting traffic
+6. **Development Tools**: Start development servers with hot reload
+
+### Minimal MVP Path
+
+**Week 1-2: Core Infrastructure**
+- Project CRUD with basic UI
+- Database schema and migrations
+- Authentication with JWT tokens
+- Basic React Flow canvas
+
+**Week 3-4: Orchestration Foundation**
+- XState machine for pipeline control
+- Basic LLM integration for circuit generation
+- Component library search and selection
+- Simple export to netlist format
+
+**Week 5-6: EDA Pipeline**
+- ERC/DRC validation implementation
+- KiCad export functionality
+- Layout generation with ELK.js
+- Error handling and retry logic
+
+**Week 7-8: Production Polish**
+- Real-time collaboration with WebSocket
+- Comprehensive testing and monitoring
+- Performance optimization and caching
+- Security hardening and rate limiting
+
+### Stretch Features
+
+- **Advanced EDA**: Multi-layer PCB design, differential pairs, impedance control
+- **Simulation Integration**: SPICE simulation with interactive results
+- **Manufacturing**: DFM analysis, fab house API integration, cost estimation
+- **AI Enhancement**: Custom LLM fine-tuning, component recommendation engine
+- **Collaboration**: Advanced conflict resolution, design review workflows
+- **Mobile Support**: Responsive design for tablets, native mobile apps
+
+### Critical Risks & Dependencies
+
+**Technical Risks**:
+- LLM API reliability and cost management
+- Real-time collaboration complexity at scale
+- EDA algorithm accuracy for production use
+- Component database freshness and licensing
+
+**Business Dependencies**:
+- Component supplier partnerships for pricing data
+- LLM provider relationships and rate limits  
+- User feedback for EDA workflow refinement
+- Legal review for component library usage rights
+
+**Mitigation Strategies**:
+- Multi-provider LLM fallback system
+- Comprehensive test coverage for EDA algorithms
+- Regular component database updates with versioning
+- Clear user agreements for generated content licensing
+
+## 13. Glossary
+
+**BOM (Bill of Materials)**: Complete list of components required for manufacturing, including quantities, part numbers, and sourcing information.
+
+**CRDT (Conflict-free Replicated Data Type)**: Data structure enabling real-time collaboration without coordination, used via Yjs for canvas synchronization.
+
+**DRC (Design Rules Check)**: Verification that PCB layout meets manufacturing constraints like minimum trace width, spacing, and via sizes.
+
+**DSN**: Specctra router file format for PCB layout tools, containing component placement and routing constraints.
+
+**EDA (Electronic Design Automation)**: Software tools for designing electronic systems, including schematic capture, simulation, and PCB layout.
+
+**ELK (Eclipse Layout Kernel)**: Graph layout algorithm library used for automatic component placement and routing optimization.
+
+**ERC (Electrical Rules Check)**: Validation of circuit connectivity, power integrity, and electrical compatibility between components.
+
+**GLB**: 3D graphics format for board visualization, enabling real-time 3D preview of PCB designs.
+
+**KiCad**: Open-source EDA suite for schematic capture and PCB design, primary export target for generated designs.
+
+**LLM (Large Language Model)**: AI system (OpenAI GPT-4, Anthropic Claude) used for circuit generation and component selection.
+
+**MPN (Manufacturer Part Number)**: Unique identifier for electronic components used for exact part matching and sourcing.
+
+**Netlist**: Text representation of circuit connectivity, listing all components and their electrical connections.
+
+**Orchestration**: Automated multi-stage pipeline for hardware design, managed by XState finite state machine.
+
+**React Flow**: React library for node-based visual interfaces, used for project canvas and circuit diagram editing.
+
+**Schematic**: Visual representation of electronic circuit showing component symbols and their logical connections.
+
+**XState**: TypeScript library for finite state machines, used to manage complex orchestration workflow with states, events, and transitions.
+
+---
+
+*Generated from codebase analysis on Node.js v20.19.3 with TypeScript compilation (partial success with type errors in active development areas)*
