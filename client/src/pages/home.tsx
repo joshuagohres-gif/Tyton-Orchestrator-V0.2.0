@@ -65,10 +65,18 @@ export default function Home() {
 
   return (
     <div className="min-h-screen starry-bg">
+      {/* Background Depth Layer */}
+      <div className="nebula-layer"></div>
+      
       {/* Constellation Overlays */}
       <div className="constellation constellation-ursa-major"></div>
       <div className="constellation constellation-orion"></div>
       <div className="constellation constellation-cassiopeia"></div>
+      
+      {/* Shooting Stars */}
+      <div className="shooting-star shooting-star-1"></div>
+      <div className="shooting-star shooting-star-2"></div>
+      <div className="shooting-star shooting-star-3"></div>
       
       {/* Header */}
       <header className="bg-card border-b border-border px-6 py-4">
