@@ -234,232 +234,217 @@
     }
   }
 
-  /* Constellation Outlines */
-  .starry-bg .constellation {
+  /* Astronomical Constellation System */
+  .starry-bg .constellation-container {
     position: absolute;
+    top: 0;
+    left: 0;
+    width: 300vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 5;
+    animation: star-pan-medium 120s linear infinite;
+  }
+
+  /* Constellation Stars - Real Astronomical Coordinates */
+  .constellation-star {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.4) 70%, transparent 100%);
+    border-radius: 50%;
+    opacity: 0;
+    animation: constellation-star-emerge 120s infinite;
+  }
+
+  /* Ursa Major (Big Dipper) - Accurate Star Positions */
+  .constellation-star.dubhe { top: 28%; left: 15%; animation-delay: 10s; } /* α UMa */
+  .constellation-star.merak { top: 32%; left: 17%; animation-delay: 10s; } /* β UMa */
+  .constellation-star.phecda { top: 35%; left: 19%; animation-delay: 10s; } /* γ UMa */
+  .constellation-star.megrez { top: 38%; left: 21%; animation-delay: 10s; } /* δ UMa */
+  .constellation-star.alioth { top: 40%; left: 23%; animation-delay: 10s; } /* ε UMa */
+  .constellation-star.mizar { top: 42%; left: 25%; animation-delay: 10s; } /* ζ UMa */
+  .constellation-star.alkaid { top: 45%; left: 27%; animation-delay: 10s; } /* η UMa */
+
+  /* Orion - Accurate Star Positions */
+  .constellation-star.betelgeuse { top: 45%; left: 55%; animation-delay: 50s; } /* α Ori */
+  .constellation-star.rigel { top: 65%; left: 57%; animation-delay: 50s; } /* β Ori */
+  .constellation-star.bellatrix { top: 48%; left: 52%; animation-delay: 50s; } /* γ Ori */
+  .constellation-star.mintaka { top: 55%; left: 54%; animation-delay: 50s; } /* δ Ori - Belt */
+  .constellation-star.alnilam { top: 57%; left: 55%; animation-delay: 50s; } /* ε Ori - Belt */
+  .constellation-star.alnitak { top: 59%; left: 56%; animation-delay: 50s; } /* ζ Ori - Belt */
+  .constellation-star.saiph { top: 68%; left: 53%; animation-delay: 50s; } /* κ Ori */
+
+  /* Cassiopeia - Accurate Star Positions */
+  .constellation-star.schedar { top: 20%; left: 85%; animation-delay: 90s; } /* α Cas */
+  .constellation-star.caph { top: 18%; left: 87%; animation-delay: 90s; } /* β Cas */
+  .constellation-star.navi { top: 22%; left: 89%; animation-delay: 90s; } /* γ Cas */
+  .constellation-star.ruchbah { top: 25%; left: 91%; animation-delay: 90s; } /* δ Cas */
+  .constellation-star.segin { top: 23%; left: 93%; animation-delay: 90s; } /* ε Cas */
+
+  /* Constellation Line Connections - 4 Second Tracing */
+  .constellation-line {
+    position: absolute;
+    background: linear-gradient(90deg, transparent, hsl(195 100% 50% / 0.15), transparent);
+    height: 1px;
     opacity: 0;
     pointer-events: none;
-    z-index: 3;
-  }
-
-  .starry-bg .constellation-ursa-major {
-    top: 10%;
-    right: 20%;
-    width: 200px;
-    height: 120px;
-    animation: constellation-cycle 60s infinite;
-    animation-delay: 0s;
-  }
-
-  .starry-bg .constellation-ursa-major::before {
-    content: '';
-    position: absolute;
-    /* Big Dipper bowl */
-    top: 20px;
-    left: 40px;
-    width: 60px;
-    height: 40px;
-    border-top: 1px solid hsl(195 100% 50%);
-    border-right: 1px solid hsl(195 100% 50%);
-    border-bottom: 1px solid hsl(195 100% 50%);
-    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
-  }
-
-  .starry-bg .constellation-ursa-major::after {
-    content: '';
-    position: absolute;
-    /* Big Dipper handle */
-    top: 20px;
-    left: 100px;
-    width: 80px;
-    height: 2px;
-    background: linear-gradient(45deg, hsl(195 100% 50%) 0%, transparent 50%, hsl(195 100% 50%) 100%);
-    transform: rotate(-30deg);
     transform-origin: left center;
-    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
+    animation: constellation-line-trace 120s infinite;
   }
 
-  .starry-bg .constellation-orion {
-    bottom: 25%;
-    left: 15%;
-    width: 150px;
-    height: 200px;
-    animation: constellation-cycle 60s infinite;
-    animation-delay: 20s;
+  /* Ursa Major Lines */
+  .line-dubhe-merak { top: 30%; left: 15%; width: 2.5%; transform: rotate(15deg); animation-delay: 14s; }
+  .line-merak-phecda { top: 33.5%; left: 17%; width: 2.5%; transform: rotate(20deg); animation-delay: 14.5s; }
+  .line-phecda-megrez { top: 36.5%; left: 19%; width: 2.5%; transform: rotate(25deg); animation-delay: 15s; }
+  .line-megrez-alioth { top: 39%; left: 21%; width: 2.5%; transform: rotate(15deg); animation-delay: 15.5s; }
+  .line-alioth-mizar { top: 41%; left: 23%; width: 2.5%; transform: rotate(15deg); animation-delay: 16s; }
+  .line-mizar-alkaid { top: 43.5%; left: 25%; width: 2.5%; transform: rotate(20deg); animation-delay: 16.5s; }
+  .line-megrez-dubhe { top: 33%; left: 18%; width: 4%; transform: rotate(-35deg); animation-delay: 17s; }
+
+  /* Orion Lines */
+  .line-betelgeuse-bellatrix { top: 46.5%; left: 52%; width: 3.5%; transform: rotate(0deg); animation-delay: 54s; }
+  .line-bellatrix-mintaka { top: 51.5%; left: 53%; width: 4%; transform: rotate(35deg); animation-delay: 54.5s; }
+  .line-mintaka-alnilam { top: 56%; left: 54%; width: 1.5%; transform: rotate(45deg); animation-delay: 55s; }
+  .line-alnilam-alnitak { top: 58%; left: 55%; width: 1.5%; transform: rotate(45deg); animation-delay: 55.5s; }
+  .line-alnitak-saiph { top: 62.5%; left: 54.5%; width: 4.5%; transform: rotate(-35deg); animation-delay: 56s; }
+  .line-saiph-rigel { top: 66.5%; left: 55%; width: 2.5%; transform: rotate(0deg); animation-delay: 56.5s; }
+  .line-rigel-alnilam { top: 61%; left: 56%; width: 4%; transform: rotate(-65deg); animation-delay: 57s; }
+
+  /* Cassiopeia Lines */
+  .line-schedar-caph { top: 19%; left: 85%; width: 2.5%; transform: rotate(-15deg); animation-delay: 94s; }
+  .line-caph-navi { top: 20%; left: 87%; width: 2.5%; transform: rotate(25deg); animation-delay: 94.5s; }
+  .line-navi-ruchbah { top: 23.5%; left: 89%; width: 2.5%; transform: rotate(20deg); animation-delay: 95s; }
+  .line-ruchbah-segin { top: 24%; left: 91%; width: 2.5%; transform: rotate(-15deg); animation-delay: 95.5s; }
+
+  /* Animation Keyframes */
+  @keyframes constellation-star-emerge {
+    0%, 8% { opacity: 0; transform: scale(0.8); }
+    10%, 15% { opacity: 1; transform: scale(1.1); } /* Stars brighten when pattern emerges */
+    17%, 30% { opacity: 0.8; transform: scale(1); } /* Normal brightness during lines */
+    32%, 100% { opacity: 0; transform: scale(0.8); }
   }
 
-  .starry-bg .constellation-orion::before {
-    content: '';
-    position: absolute;
-    /* Orion's Belt */
-    top: 100px;
-    left: 50px;
-    width: 60px;
-    height: 2px;
-    background: linear-gradient(90deg, 
-      transparent 0%, hsl(195 100% 50%) 20%, 
-      transparent 40%, hsl(195 100% 50%) 60%, 
-      transparent 80%, hsl(195 100% 50%) 100%);
-    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
+  @keyframes constellation-line-trace {
+    0%, 11% { opacity: 0; transform: scaleX(0); }
+    12% { opacity: 0.15; transform: scaleX(0); } /* Lines start appearing */
+    16% { opacity: 0.15; transform: scaleX(1); } /* 4-second line tracing */
+    18%, 30% { opacity: 0.15; transform: scaleX(1); } /* Lines stay visible */
+    32%, 100% { opacity: 0; transform: scaleX(0); } /* Lines fade */
   }
 
-  .starry-bg .constellation-orion::after {
-    content: '';
-    position: absolute;
-    /* Orion's shoulders and body lines */
-    top: 40px;
-    left: 75px;
-    width: 2px;
-    height: 120px;
-    background: linear-gradient(180deg, 
-      hsl(195 100% 50%) 0%, 
-      transparent 30%, 
-      hsl(195 100% 50%) 50%, 
-      transparent 70%, 
-      hsl(195 100% 50%) 100%);
-    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
-  }
-
-  .starry-bg .constellation-cassiopeia {
-    top: 15%;
-    left: 30%;
-    width: 140px;
-    height: 80px;
-    animation: constellation-cycle 60s infinite;
-    animation-delay: 40s;
-  }
-
-  .starry-bg .constellation-cassiopeia::before {
-    content: '';
-    position: absolute;
-    /* Cassiopeia W shape - left part */
-    top: 40px;
-    left: 20px;
-    width: 2px;
-    height: 30px;
-    background: hsl(195 100% 50%);
-    transform: rotate(25deg);
-    transform-origin: bottom center;
-    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
-  }
-
-  .starry-bg .constellation-cassiopeia::after {
-    content: '';
-    position: absolute;
-    /* Cassiopeia W shape - right part */
-    top: 40px;
-    right: 20px;
-    width: 2px;
-    height: 30px;
-    background: hsl(195 100% 50%);
-    transform: rotate(-25deg);
-    transform-origin: bottom center;
-    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
-  }
-
-  @keyframes constellation-cycle {
-    0%, 15% { opacity: 0; }
-    20%, 30% { opacity: 0.3; }
-    35%, 80% { opacity: 0; }
-    100% { opacity: 0; }
-  }
-
-  /* Shooting Star Effects */
+  /* Physics-Based Shooting Stars - Rarer but More Spectacular */
   .starry-bg .shooting-star {
     position: absolute;
-    width: 2px;
-    height: 2px;
-    background: linear-gradient(45deg, rgba(255,255,255,1), rgba(255,255,255,0.3));
+    width: 3px;
+    height: 3px;
+    background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0.8) 50%, transparent 100%);
     border-radius: 50%;
     opacity: 0;
     pointer-events: none;
-    z-index: 4;
+    z-index: 6;
+    filter: drop-shadow(0 0 4px rgba(255,255,255,0.6));
   }
 
   .starry-bg .shooting-star-1 {
-    top: 15%;
-    right: 10%;
-    animation: shooting-star-1 15s infinite;
-    animation-delay: 5s;
+    top: 10%;
+    left: -100px;
+    animation: meteor-flight-1 3s infinite;
+    animation-delay: 15s; /* Rarer timing - every 45s total cycle */
   }
 
   .starry-bg .shooting-star-2 {
-    top: 70%;
-    left: 20%;
-    animation: shooting-star-2 20s infinite;
-    animation-delay: 12s;
+    top: 60%;
+    left: -120px;
+    animation: meteor-flight-2 4s infinite;
+    animation-delay: 30s; /* Rarer timing - every 60s total cycle */
   }
 
   .starry-bg .shooting-star-3 {
-    top: 30%;
-    left: 70%;
-    animation: shooting-star-3 25s infinite;
-    animation-delay: 18s;
+    top: 35%;
+    left: -80px;
+    animation: meteor-flight-3 3.5s infinite;
+    animation-delay: 45s; /* Rarer timing - every 75s total cycle */
   }
 
   .starry-bg .shooting-star::after {
     content: '';
     position: absolute;
     top: 0;
-    right: 2px;
-    width: 80px;
-    height: 1px;
+    right: 3px;
+    width: 120px; /* Longer, more spectacular trail */
+    height: 2px;
     background: linear-gradient(90deg, 
       transparent 0%, 
-      rgba(255,255,255,0.6) 60%, 
-      rgba(255,255,255,0.9) 80%, 
-      rgba(255,255,255,0.4) 100%);
-    transform: rotate(45deg);
+      rgba(255,255,255,0.3) 40%,
+      rgba(255,255,255,0.8) 70%, 
+      rgba(255,255,255,1) 85%, 
+      rgba(255,255,255,0.6) 100%);
+    transform: rotate(25deg);
     transform-origin: right center;
-    opacity: 0.7;
+    opacity: 0.9;
+    filter: blur(0.5px) drop-shadow(0 0 2px rgba(255,255,255,0.4));
   }
 
-  @keyframes shooting-star-1 {
-    0%, 90% { 
+  /* Physics-Based Meteor Flight Animations */
+  @keyframes meteor-flight-1 {
+    0% { 
       opacity: 0; 
       transform: translateX(0) translateY(0); 
     }
-    95% { 
+    10% { 
       opacity: 1; 
-      transform: translateX(0) translateY(0); 
-    }
-    100% { 
-      opacity: 0; 
-      transform: translateX(-200px) translateY(150px); 
-    }
-  }
-
-  @keyframes shooting-star-2 {
-    0%, 85% { 
-      opacity: 0; 
-      transform: translateX(0) translateY(0); 
+      transform: translateX(80px) translateY(60px); 
     }
     90% { 
       opacity: 1; 
-      transform: translateX(0) translateY(0); 
+      transform: translateX(400px) translateY(300px); 
     }
     100% { 
       opacity: 0; 
-      transform: translateX(-150px) translateY(-100px); 
+      transform: translateX(500px) translateY(375px); 
     }
   }
 
-  @keyframes shooting-star-3 {
-    0%, 80% { 
+  @keyframes meteor-flight-2 {
+    0% { 
       opacity: 0; 
       transform: translateX(0) translateY(0); 
     }
-    85% { 
+    8% { 
       opacity: 1; 
-      transform: translateX(0) translateY(0); 
+      transform: translateX(100px) translateY(-40px); 
+    }
+    92% { 
+      opacity: 1; 
+      transform: translateX(450px) translateY(-180px); 
     }
     100% { 
       opacity: 0; 
-      transform: translateX(-180px) translateY(120px); 
+      transform: translateX(550px) translateY(-220px); 
     }
   }
 
-  /* Enhanced Background Depth */
+  @keyframes meteor-flight-3 {
+    0% { 
+      opacity: 0; 
+      transform: translateX(0) translateY(0); 
+    }
+    12% { 
+      opacity: 1; 
+      transform: translateX(90px) translateY(70px); 
+    }
+    88% { 
+      opacity: 1; 
+      transform: translateX(420px) translateY(320px); 
+    }
+    100% { 
+      opacity: 0; 
+      transform: translateX(500px) translateY(380px); 
+    }
+  }
+
+  /* Enhanced Prominent Nebula Background */
   .starry-bg .nebula-layer {
     position: absolute;
     top: 0;
@@ -467,13 +452,18 @@
     right: 0;
     bottom: 0;
     background: 
-      radial-gradient(ellipse 800px 600px at 20% 80%, hsla(240, 100%, 5%, 0.3) 0%, transparent 50%),
-      radial-gradient(ellipse 600px 400px at 80% 20%, hsla(280, 80%, 8%, 0.2) 0%, transparent 50%),
-      radial-gradient(ellipse 400px 800px at 40% 30%, hsla(200, 60%, 10%, 0.15) 0%, transparent 50%);
-    opacity: 0.6;
+      /* Primary nebula clouds - more prominent */
+      radial-gradient(ellipse 1200px 800px at 25% 75%, hsla(260, 80%, 12%, 0.7) 0%, hsla(260, 60%, 8%, 0.4) 40%, transparent 70%),
+      radial-gradient(ellipse 900px 600px at 75% 25%, hsla(190, 70%, 15%, 0.6) 0%, hsla(190, 50%, 10%, 0.3) 50%, transparent 70%),
+      radial-gradient(ellipse 800px 1000px at 50% 50%, hsla(310, 60%, 10%, 0.5) 0%, hsla(310, 40%, 6%, 0.2) 60%, transparent 80%),
+      /* Additional depth layers */
+      radial-gradient(ellipse 600px 400px at 10% 40%, hsla(220, 50%, 8%, 0.4) 0%, transparent 60%),
+      radial-gradient(ellipse 700px 500px at 90% 60%, hsla(280, 70%, 9%, 0.5) 0%, transparent 65%);
+    opacity: 0.8; /* More prominent than previous 0.4 */
     pointer-events: none;
-    z-index: 0;
-    animation: nebula-drift 120s ease-in-out infinite alternate;
+    z-index: 2;
+    animation: nebula-drift 180s ease-in-out infinite alternate;
+    filter: blur(1.5px); /* Subtle glow effect */
   }
 
   @keyframes nebula-drift {
@@ -541,75 +531,99 @@
     }
   }
 
-  /* Mobile and Tablet Responsive Design */
+  /* Mobile and Tablet Responsive Design - Optimized for New System */
   @media (max-width: 768px) {
-    /* Reduce star density on mobile for performance */
+    /* Reduce star layers on mobile for performance - Remove far layer */
     body::before {
-      background-size: 150px 75px;
       opacity: 0.5;
+      animation-duration: 200s; /* Slower on mobile to reduce CPU usage */
     }
     
+    /* Simplify mid layer stars */
     .starry-bg::before {
       background-image: 
-        radial-gradient(3px 3px at 15% 20%, rgba(255,255,255,0.7), transparent),
-        radial-gradient(2px 2px at 85% 10%, rgba(255,255,255,0.6), transparent),
-        radial-gradient(2px 2px at 70% 85%, rgba(255,255,255,0.5), transparent);
-      opacity: 0.3;
+        radial-gradient(1.5px 1.5px at 12%, 18%, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1.5px 1.5px at 38%, 25%, rgba(255,255,255,0.5), transparent),
+        radial-gradient(1.5px 1.5px at 58%, 30%, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1.5px 1.5px at 78%, 40%, rgba(255,255,255,0.5), transparent),
+        radial-gradient(1.5px 1.5px at 8%, 70%, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1.5px 1.5px at 42%, 80%, rgba(255,255,255,0.5), transparent),
+        radial-gradient(1.5px 1.5px at 72%, 75%, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1.5px 1.5px at 92%, 15%, rgba(255,255,255,0.5), transparent);
+      opacity: 0.6;
     }
     
+    /* Simplify near layer stars */
     .starry-bg::after {
       background-image: 
-        radial-gradient(1px 1px at 25% 30%, rgba(255,255,255,0.4), transparent),
-        radial-gradient(1px 1px at 75% 20%, rgba(255,255,255,0.5), transparent);
-      opacity: 0.2;
+        radial-gradient(2px 2px at 18%, 25%, rgba(255,255,255,0.7), transparent),
+        radial-gradient(2px 2px at 52%, 35%, rgba(255,255,255,0.7), transparent),
+        radial-gradient(2px 2px at 76%, 25%, rgba(255,255,255,0.8), transparent),
+        radial-gradient(2px 2px at 24%, 65%, rgba(255,255,255,0.7), transparent),
+        radial-gradient(2px 2px at 62%, 80%, rgba(255,255,255,0.8), transparent);
+      opacity: 0.7;
     }
     
-    /* Smaller constellations on mobile */
-    .starry-bg .constellation-ursa-major {
-      width: 120px;
-      height: 80px;
-      right: 10%;
+    /* Reduce constellation complexity on mobile */
+    .constellation-star {
+      width: 2px;
+      height: 2px;
     }
     
-    .starry-bg .constellation-orion {
-      width: 100px;
-      height: 140px;
-      left: 5%;
+    .constellation-line {
+      height: 0.5px;
+      opacity: 0.1 !important;
     }
     
-    .starry-bg .constellation-cassiopeia {
-      width: 100px;
-      height: 60px;
-      left: 20%;
-    }
-    
-    /* Reduce nebula complexity on mobile */
+    /* Simplify nebula on mobile */
     .starry-bg .nebula-layer {
       background: 
-        radial-gradient(ellipse 400px 300px at 30% 70%, hsla(240, 100%, 5%, 0.2) 0%, transparent 50%),
-        radial-gradient(ellipse 300px 200px at 70% 30%, hsla(280, 80%, 8%, 0.15) 0%, transparent 50%);
-      opacity: 0.4;
+        radial-gradient(ellipse 600px 400px at 30% 70%, hsla(260, 60%, 8%, 0.4) 0%, transparent 60%),
+        radial-gradient(ellipse 500px 300px at 70% 30%, hsla(190, 50%, 10%, 0.3) 0%, transparent 50%);
+      opacity: 0.5;
     }
   }
 
   @media (max-width: 480px) {
-    /* Further reduce effects on small mobile screens */
+    /* Minimal effects on small mobile screens */
     .starry-bg .shooting-star {
-      display: none;
+      display: none; /* Remove shooting stars on small screens */
     }
     
-    .starry-bg .constellation {
-      opacity: 0.1;
+    .constellation-container {
+      opacity: 0.3; /* Reduce constellation visibility */
     }
     
     .starry-bg .nebula-layer {
-      opacity: 0.2;
+      opacity: 0.3;
+      background: 
+        radial-gradient(ellipse 400px 300px at 50% 50%, hsla(260, 40%, 6%, 0.2) 0%, transparent 70%);
     }
+    
+    /* Slower animations to preserve battery */
+    .starry-bg::before,
+    .starry-bg::after,
+    .constellation-container {
+      animation-duration: 240s !important;
+    }
+  }
+
+  /* Performance Optimizations */
+  .starry-bg {
+    will-change: transform;
+  }
+
+  .starry-bg .constellation-container,
+  .starry-bg .shooting-star {
+    will-change: transform, opacity;
   }
 
   /* High refresh rate displays optimization */
   @media (min-resolution: 120dpi) {
-    .starry-bg * {
+    .starry-bg::before,
+    .starry-bg::after,
+    .constellation-container,
+    .shooting-star {
       transform: translateZ(0);
       backface-visibility: hidden;
     }

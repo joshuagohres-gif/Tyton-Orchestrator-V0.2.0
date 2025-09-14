@@ -68,12 +68,60 @@ export default function Home() {
       {/* Background Depth Layer */}
       <div className="nebula-layer"></div>
       
-      {/* Constellation Overlays */}
-      <div className="constellation constellation-ursa-major"></div>
-      <div className="constellation constellation-orion"></div>
-      <div className="constellation constellation-cassiopeia"></div>
+      {/* Astronomical Constellation System */}
+      <div className="constellation-container">
+        {/* Ursa Major (Big Dipper) Stars */}
+        <div className="constellation-star dubhe"></div>
+        <div className="constellation-star merak"></div>
+        <div className="constellation-star phecda"></div>
+        <div className="constellation-star megrez"></div>
+        <div className="constellation-star alioth"></div>
+        <div className="constellation-star mizar"></div>
+        <div className="constellation-star alkaid"></div>
+        
+        {/* Orion Stars */}
+        <div className="constellation-star betelgeuse"></div>
+        <div className="constellation-star rigel"></div>
+        <div className="constellation-star bellatrix"></div>
+        <div className="constellation-star mintaka"></div>
+        <div className="constellation-star alnilam"></div>
+        <div className="constellation-star alnitak"></div>
+        <div className="constellation-star saiph"></div>
+        
+        {/* Cassiopeia Stars */}
+        <div className="constellation-star schedar"></div>
+        <div className="constellation-star caph"></div>
+        <div className="constellation-star navi"></div>
+        <div className="constellation-star ruchbah"></div>
+        <div className="constellation-star segin"></div>
+        
+        {/* Constellation Lines - 4 Second Tracing */}
+        {/* Ursa Major Lines */}
+        <div className="constellation-line line-dubhe-merak"></div>
+        <div className="constellation-line line-merak-phecda"></div>
+        <div className="constellation-line line-phecda-megrez"></div>
+        <div className="constellation-line line-megrez-alioth"></div>
+        <div className="constellation-line line-alioth-mizar"></div>
+        <div className="constellation-line line-mizar-alkaid"></div>
+        <div className="constellation-line line-megrez-dubhe"></div>
+        
+        {/* Orion Lines */}
+        <div className="constellation-line line-betelgeuse-bellatrix"></div>
+        <div className="constellation-line line-bellatrix-mintaka"></div>
+        <div className="constellation-line line-mintaka-alnilam"></div>
+        <div className="constellation-line line-alnilam-alnitak"></div>
+        <div className="constellation-line line-alnitak-saiph"></div>
+        <div className="constellation-line line-saiph-rigel"></div>
+        <div className="constellation-line line-rigel-alnilam"></div>
+        
+        {/* Cassiopeia Lines */}
+        <div className="constellation-line line-schedar-caph"></div>
+        <div className="constellation-line line-caph-navi"></div>
+        <div className="constellation-line line-navi-ruchbah"></div>
+        <div className="constellation-line line-ruchbah-segin"></div>
+      </div>
       
-      {/* Shooting Stars */}
+      {/* Physics-Based Shooting Stars */}
       <div className="shooting-star shooting-star-1"></div>
       <div className="shooting-star shooting-star-2"></div>
       <div className="shooting-star shooting-star-3"></div>
