@@ -45,6 +45,19 @@ export interface OrchestrationStage {
   completedAt?: string;
 }
 
+export interface OrchestrationStatus {
+  id?: string;
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'error' | 'cancelled';
+  currentStage?: string;
+  progress: number;
+  context?: Record<string, any>;
+  stageRuns?: OrchestrationStage[];
+  availableActions?: string[];
+  errorMessage?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
 export interface WebSocketMessage {
   type: 'canvas_update' | 'user_presence' | 'cursor_position' | 'orchestration_progress';
   action?: string;

@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Play, Pause, Square, Send, CheckCircle, Clock, AlertCircle, Loader2 } from "lucide-react";
-import type { ProjectWithModules, OrchestrationStage } from "@/types/project";
+import type { ProjectWithModules, OrchestrationStage, OrchestrationStatus } from "@/types/project";
 
 interface OrchestrationPanelProps {
   project: ProjectWithModules;
@@ -20,7 +20,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
   const { toast } = useToast();
 
   // Get orchestration status
-  const { data: orchestrationStatus, isLoading: statusLoading } = useQuery({
+  const { data: orchestrationStatus, isLoading: statusLoading } = useQuery<OrchestrationStatus>({
     queryKey: ["/api/projects", project.id, "orchestrator/status"],
     refetchInterval: 2000, // Poll every 2 seconds when orchestration is running
   });
