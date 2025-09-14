@@ -93,40 +93,36 @@
     position: relative;
   }
 
+  /* Dynamic Panning Star Field System - Global Background Layer */
   body::before {
     content: '';
     position: fixed;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
+    width: 300vw; /* Extended width for seamless panning */
+    height: 100vh;
     background-image: 
-      /* Large bright stars */
-      radial-gradient(3px 3px at 25px 35px, rgba(255,255,255,0.9), transparent),
-      radial-gradient(3px 3px at 180px 25px, rgba(255,255,255,0.8), transparent),
-      radial-gradient(2px 2px at 120px 90px, rgba(255,255,255,0.9), transparent),
-      /* Medium stars */
-      radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.7), transparent),
-      radial-gradient(2px 2px at 160px 30px, rgba(255,255,255,0.6), transparent),
-      radial-gradient(2px 2px at 80px 50px, rgba(255,255,255,0.7), transparent),
-      radial-gradient(2px 2px at 190px 80px, rgba(255,255,255,0.8), transparent),
-      /* Small background stars */
-      radial-gradient(1px 1px at 90px 40px, rgba(255,255,255,0.5), transparent),
-      radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.4), transparent),
-      radial-gradient(1px 1px at 60px 15px, rgba(255,255,255,0.5), transparent),
-      radial-gradient(1px 1px at 170px 60px, rgba(255,255,255,0.6), transparent),
-      radial-gradient(1px 1px at 30px 90px, rgba(255,255,255,0.4), transparent),
-      radial-gradient(1px 1px at 140px 20px, rgba(255,255,255,0.5), transparent),
-      /* Tiny distant stars */
-      radial-gradient(0.5px 0.5px at 10px 50px, rgba(255,255,255,0.3), transparent),
-      radial-gradient(0.5px 0.5px at 150px 10px, rgba(255,255,255,0.4), transparent),
-      radial-gradient(0.5px 0.5px at 70px 85px, rgba(255,255,255,0.3), transparent);
-    background-repeat: repeat;
-    background-size: 200px 100px;
-    opacity: 0.6;
+      /* Far Layer - Background Stars (15 stars) */
+      radial-gradient(1px 1px at 10%, 15%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(0.8px 0.8px at 25%, 35%, rgba(255,255,255,0.25), transparent),
+      radial-gradient(1px 1px at 45%, 25%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(0.8px 0.8px at 65%, 45%, rgba(255,255,255,0.2), transparent),
+      radial-gradient(1px 1px at 80%, 20%, rgba(255,255,255,0.35), transparent),
+      radial-gradient(0.8px 0.8px at 15%, 65%, rgba(255,255,255,0.25), transparent),
+      radial-gradient(1px 1px at 35%, 75%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(0.8px 0.8px at 55%, 60%, rgba(255,255,255,0.2), transparent),
+      radial-gradient(1px 1px at 75%, 70%, rgba(255,255,255,0.35), transparent),
+      radial-gradient(0.8px 0.8px at 90%, 55%, rgba(255,255,255,0.25), transparent),
+      radial-gradient(1px 1px at 5%, 85%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(0.8px 0.8px at 30%, 95%, rgba(255,255,255,0.2), transparent),
+      radial-gradient(1px 1px at 60%, 85%, rgba(255,255,255,0.35), transparent),
+      radial-gradient(0.8px 0.8px at 85%, 90%, rgba(255,255,255,0.25), transparent),
+      radial-gradient(1px 1px at 95%, 30%, rgba(255,255,255,0.3), transparent);
+    background-size: 100vw 100vh;
+    opacity: 0.7;
     pointer-events: none;
-    z-index: 0;
-    animation: subtle-twinkle 8s ease-in-out infinite alternate;
+    z-index: 1;
+    animation: star-pan-slow 160s linear infinite, star-twinkle-subtle 12s ease-in-out infinite;
   }
 
   .starry-bg {
@@ -135,73 +131,107 @@
     overflow: hidden;
   }
 
+  /* Mid Layer - Main stars including constellation stars (20 stars) */
   .starry-bg::before {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
+    width: 300vw;
+    height: 100vh;
     background-image: 
-      /* Enhanced layer for starry-bg pages with more prominent stars */
-      radial-gradient(4px 4px at 15% 20%, rgba(255,255,255,0.9), transparent),
-      radial-gradient(3px 3px at 85% 10%, rgba(255,255,255,0.8), transparent),
-      radial-gradient(3px 3px at 70% 85%, rgba(255,255,255,0.7), transparent),
-      radial-gradient(2px 2px at 30% 60%, rgba(255,255,255,0.6), transparent),
-      radial-gradient(2px 2px at 90% 50%, rgba(255,255,255,0.7), transparent);
+      /* Main layer stars with constellation positions */
+      radial-gradient(2px 2px at 12%, 18%, rgba(255,255,255,0.8), transparent), /* Constellation star */
+      radial-gradient(2px 2px at 14%, 22%, rgba(255,255,255,0.75), transparent), /* Constellation star */
+      radial-gradient(2px 2px at 16%, 24%, rgba(255,255,255,0.8), transparent), /* Constellation star */
+      radial-gradient(1.5px 1.5px at 22%, 35%, rgba(255,255,255,0.7), transparent),
+      radial-gradient(2px 2px at 38%, 25%, rgba(255,255,255,0.75), transparent),
+      radial-gradient(1.5px 1.5px at 48%, 45%, rgba(255,255,255,0.6), transparent),
+      radial-gradient(2px 2px at 58%, 30%, rgba(255,255,255,0.8), transparent),
+      radial-gradient(1.5px 1.5px at 68%, 55%, rgba(255,255,255,0.65), transparent),
+      radial-gradient(2px 2px at 78%, 40%, rgba(255,255,255,0.75), transparent),
+      radial-gradient(1.5px 1.5px at 88%, 65%, rgba(255,255,255,0.7), transparent),
+      radial-gradient(2px 2px at 8%, 70%, rgba(255,255,255,0.8), transparent), /* Constellation star */
+      radial-gradient(2px 2px at 10%, 72%, rgba(255,255,255,0.75), transparent), /* Constellation star */
+      radial-gradient(2px 2px at 12%, 74%, rgba(255,255,255,0.8), transparent), /* Constellation star */
+      radial-gradient(1.5px 1.5px at 28%, 75%, rgba(255,255,255,0.65), transparent),
+      radial-gradient(2px 2px at 42%, 80%, rgba(255,255,255,0.7), transparent),
+      radial-gradient(1.5px 1.5px at 56%, 85%, rgba(255,255,255,0.6), transparent),
+      radial-gradient(2px 2px at 72%, 75%, rgba(255,255,255,0.75), transparent),
+      radial-gradient(1.5px 1.5px at 84%, 80%, rgba(255,255,255,0.65), transparent),
+      radial-gradient(2px 2px at 92%, 15%, rgba(255,255,255,0.8), transparent),
+      radial-gradient(1.5px 1.5px at 96%, 50%, rgba(255,255,255,0.7), transparent);
     background-size: 100vw 100vh;
-    opacity: 0.4;
+    opacity: 0.8;
     pointer-events: none;
-    z-index: 1;
-    animation: star-twinkle-fast 3s ease-in-out infinite alternate;
+    z-index: 3;
+    animation: star-pan-medium 120s linear infinite, star-twinkle-subtle 12s ease-in-out infinite;
+    animation-delay: 0s, -3s;
   }
 
+  /* Near Layer - Foreground stars (15 stars) */
   .starry-bg::after {
     content: '';
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
+    width: 300vw;
+    height: 100vh;
     background-image: 
-      /* Secondary twinkling layer with different timing */
-      radial-gradient(2px 2px at 25% 30%, rgba(255,255,255,0.5), transparent),
-      radial-gradient(1px 1px at 75% 20%, rgba(255,255,255,0.6), transparent),
-      radial-gradient(2px 2px at 45% 70%, rgba(255,255,255,0.4), transparent),
-      radial-gradient(1px 1px at 65% 90%, rgba(255,255,255,0.7), transparent),
-      radial-gradient(1px 1px at 80% 40%, rgba(255,255,255,0.5), transparent);
+      /* Foreground bright stars */
+      radial-gradient(3px 3px at 18%, 25%, rgba(255,255,255,0.9), transparent),
+      radial-gradient(2.5px 2.5px at 32%, 15%, rgba(255,255,255,0.85), transparent),
+      radial-gradient(3px 3px at 52%, 35%, rgba(255,255,255,0.9), transparent),
+      radial-gradient(2.5px 2.5px at 64%, 55%, rgba(255,255,255,0.8), transparent),
+      radial-gradient(3px 3px at 76%, 25%, rgba(255,255,255,0.95), transparent),
+      radial-gradient(2.5px 2.5px at 86%, 45%, rgba(255,255,255,0.85), transparent),
+      radial-gradient(3px 3px at 24%, 65%, rgba(255,255,255,0.9), transparent),
+      radial-gradient(2.5px 2.5px at 44%, 75%, rgba(255,255,255,0.8), transparent),
+      radial-gradient(3px 3px at 62%, 80%, rgba(255,255,255,0.95), transparent),
+      radial-gradient(2.5px 2.5px at 82%, 70%, rgba(255,255,255,0.85), transparent),
+      radial-gradient(3px 3px at 6%, 40%, rgba(255,255,255,0.9), transparent),
+      radial-gradient(2.5px 2.5px at 94%, 35%, rgba(255,255,255,0.8), transparent),
+      radial-gradient(3px 3px at 38%, 90%, rgba(255,255,255,0.95), transparent),
+      radial-gradient(2.5px 2.5px at 72%, 5%, rgba(255,255,255,0.85), transparent),
+      radial-gradient(3px 3px at 98%, 60%, rgba(255,255,255,0.9), transparent);
     background-size: 100vw 100vh;
-    opacity: 0.3;
+    opacity: 0.9;
     pointer-events: none;
-    z-index: 2;
-    animation: star-twinkle-slow 5s ease-in-out infinite alternate;
-    animation-delay: -2s;
+    z-index: 4;
+    animation: star-pan-fast 80s linear infinite, star-twinkle-subtle 12s ease-in-out infinite;
+    animation-delay: 0s, -6s;
   }
 
-  @keyframes subtle-twinkle {
-    0% { opacity: 0.6; }
-    100% { opacity: 0.8; }
+  /* Dynamic Panning Animations */
+  @keyframes star-pan-slow {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-200vw); }
   }
 
-  @keyframes star-twinkle {
-    0% { opacity: 0.4; }
-    50% { opacity: 0.2; }
-    100% { opacity: 0.5; }
+  @keyframes star-pan-medium {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-200vw); }
   }
 
-  @keyframes star-twinkle-fast {
-    0% { opacity: 0.4; }
-    25% { opacity: 0.7; }
-    50% { opacity: 0.3; }
-    75% { opacity: 0.6; }
-    100% { opacity: 0.4; }
+  @keyframes star-pan-fast {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-200vw); }
   }
 
-  @keyframes star-twinkle-slow {
-    0% { opacity: 0.3; }
-    30% { opacity: 0.1; }
-    60% { opacity: 0.5; }
-    100% { opacity: 0.3; }
+  /* Subtle Twinkling Animation */
+  @keyframes star-twinkle-subtle {
+    0% { 
+      opacity: 0.7; 
+      transform: translateX(var(--pan-offset, 0)) scale(0.98); 
+    }
+    50% { 
+      opacity: 0.95; 
+      transform: translateX(var(--pan-offset, 0)) scale(1.02); 
+    }
+    100% { 
+      opacity: 0.7; 
+      transform: translateX(var(--pan-offset, 0)) scale(0.98); 
+    }
   }
 
   /* Constellation Outlines */
