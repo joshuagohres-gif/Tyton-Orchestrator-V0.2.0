@@ -328,8 +328,8 @@
   @keyframes constellation-line-trace {
     0%, 11% { opacity: 0; transform: scaleX(0); }
     12% { opacity: 0.15; transform: scaleX(0); } /* Lines start appearing */
-    16% { opacity: 0.15; transform: scaleX(1); } /* 4-second line tracing */
-    18%, 30% { opacity: 0.15; transform: scaleX(1); } /* Lines stay visible */
+    15.33% { opacity: 0.15; transform: scaleX(1); } /* Exactly 4-second line tracing (3.33% of 120s = 4s) */
+    17%, 30% { opacity: 0.15; transform: scaleX(1); } /* Lines stay visible */
     32%, 100% { opacity: 0; transform: scaleX(0); } /* Lines fade */
   }
 
@@ -349,22 +349,19 @@
   .starry-bg .shooting-star-1 {
     top: 10%;
     left: -100px;
-    animation: meteor-flight-1 3s infinite;
-    animation-delay: 15s; /* Rarer timing - every 45s total cycle */
+    animation: meteor-flight-1 60s infinite; /* 60s cycle with meteor visible only at end */
   }
 
   .starry-bg .shooting-star-2 {
     top: 60%;
     left: -120px;
-    animation: meteor-flight-2 4s infinite;
-    animation-delay: 30s; /* Rarer timing - every 60s total cycle */
+    animation: meteor-flight-2 75s infinite; /* 75s cycle with meteor visible only at end */
   }
 
   .starry-bg .shooting-star-3 {
     top: 35%;
     left: -80px;
-    animation: meteor-flight-3 3.5s infinite;
-    animation-delay: 45s; /* Rarer timing - every 75s total cycle */
+    animation: meteor-flight-3 90s infinite; /* 90s cycle with meteor visible only at end */
   }
 
   .starry-bg .shooting-star::after {
@@ -386,17 +383,17 @@
     filter: blur(0.5px) drop-shadow(0 0 2px rgba(255,255,255,0.4));
   }
 
-  /* Physics-Based Meteor Flight Animations */
+  /* Physics-Based Meteor Flight Animations - True 45-90s Intervals */
   @keyframes meteor-flight-1 {
-    0% { 
+    0%, 92% { 
       opacity: 0; 
       transform: translateX(0) translateY(0); 
     }
-    10% { 
+    94% { 
       opacity: 1; 
       transform: translateX(80px) translateY(60px); 
     }
-    90% { 
+    99% { 
       opacity: 1; 
       transform: translateX(400px) translateY(300px); 
     }
@@ -407,15 +404,15 @@
   }
 
   @keyframes meteor-flight-2 {
-    0% { 
+    0%, 93% { 
       opacity: 0; 
       transform: translateX(0) translateY(0); 
     }
-    8% { 
+    95% { 
       opacity: 1; 
       transform: translateX(100px) translateY(-40px); 
     }
-    92% { 
+    99% { 
       opacity: 1; 
       transform: translateX(450px) translateY(-180px); 
     }
@@ -426,15 +423,15 @@
   }
 
   @keyframes meteor-flight-3 {
-    0% { 
+    0%, 94% { 
       opacity: 0; 
       transform: translateX(0) translateY(0); 
     }
-    12% { 
+    96% { 
       opacity: 1; 
       transform: translateX(90px) translateY(70px); 
     }
-    88% { 
+    99% { 
       opacity: 1; 
       transform: translateX(420px) translateY(320px); 
     }
