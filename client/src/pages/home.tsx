@@ -9,11 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Microchip, Plus, Clock, User } from "lucide-react";
+import { Microchip, Plus, Clock, User, Trash2 } from "lucide-react";
 import type { Project } from "@shared/schema";
 
 export default function Home() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
@@ -34,9 +36,31 @@ export default function Home() {
     },
   });
 
+  const deleteProjectMutation = useMutation({
+    mutationFn: async (projectId: string) => {
+      await apiRequest("DELETE", `/api/projects/${projectId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      setDeleteConfirmOpen(false);
+      setProjectToDelete(null);
+    },
+  });
+
   const handleCreateProject = () => {
     if (!title.trim()) return;
     createProjectMutation.mutate({ title, description });
+  };
+
+  const handleDeleteClick = (projectId: string) => {
+    setProjectToDelete(projectId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (projectToDelete) {
+      deleteProjectMutation.mutate(projectToDelete);
+    }
   };
 
   return (
@@ -108,6 +132,36 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-[425px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-foreground">Delete Project</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Are you sure you would like to delete? This action cannot be undone and will permanently remove the project and all its data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirmOpen(false)}
+              className="mr-2"
+              data-testid="button-cancel-delete"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleteProjectMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteProjectMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-8">
@@ -163,8 +217,8 @@ export default function Home() {
                     </div>
                   </div>
                 </CardContent>
-                <CardFooter>
-                  <Link href={`/projects/${project.id}`} className="w-full">
+                <CardFooter className="flex gap-2">
+                  <Link href={`/projects/${project.id}`} className="flex-1">
                     <Button 
                       className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-all"
                       data-testid={`button-open-project-${project.id}`}
@@ -172,6 +226,15 @@ export default function Home() {
                       Open Project
                     </Button>
                   </Link>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleDeleteClick(project.id)}
+                    className="border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                    data-testid={`button-delete-project-${project.id}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </CardFooter>
               </Card>
             ))}
