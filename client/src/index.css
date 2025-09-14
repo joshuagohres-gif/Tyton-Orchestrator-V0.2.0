@@ -461,6 +461,130 @@
     }
   }
 
+  /* Performance Optimizations */
+  .starry-bg * {
+    will-change: auto;
+  }
+
+  .starry-bg .shooting-star {
+    will-change: transform, opacity;
+  }
+
+  .starry-bg .constellation {
+    will-change: opacity;
+  }
+
+  /* Reduced Motion Support */
+  @media (prefers-reduced-motion: reduce) {
+    .starry-bg::before,
+    .starry-bg::after,
+    .starry-bg .constellation,
+    .starry-bg .shooting-star,
+    .starry-bg .nebula-layer,
+    body::before {
+      animation: none !important;
+      transition: none !important;
+    }
+    
+    .starry-bg::before {
+      opacity: 0.4 !important;
+    }
+    
+    .starry-bg::after {
+      opacity: 0.3 !important;
+    }
+    
+    body::before {
+      opacity: 0.6 !important;
+    }
+    
+    .starry-bg .constellation {
+      opacity: 0.15 !important;
+    }
+    
+    .starry-bg .shooting-star {
+      display: none !important;
+    }
+    
+    .starry-bg .nebula-layer {
+      opacity: 0.4 !important;
+    }
+  }
+
+  /* Mobile and Tablet Responsive Design */
+  @media (max-width: 768px) {
+    /* Reduce star density on mobile for performance */
+    body::before {
+      background-size: 150px 75px;
+      opacity: 0.5;
+    }
+    
+    .starry-bg::before {
+      background-image: 
+        radial-gradient(3px 3px at 15% 20%, rgba(255,255,255,0.7), transparent),
+        radial-gradient(2px 2px at 85% 10%, rgba(255,255,255,0.6), transparent),
+        radial-gradient(2px 2px at 70% 85%, rgba(255,255,255,0.5), transparent);
+      opacity: 0.3;
+    }
+    
+    .starry-bg::after {
+      background-image: 
+        radial-gradient(1px 1px at 25% 30%, rgba(255,255,255,0.4), transparent),
+        radial-gradient(1px 1px at 75% 20%, rgba(255,255,255,0.5), transparent);
+      opacity: 0.2;
+    }
+    
+    /* Smaller constellations on mobile */
+    .starry-bg .constellation-ursa-major {
+      width: 120px;
+      height: 80px;
+      right: 10%;
+    }
+    
+    .starry-bg .constellation-orion {
+      width: 100px;
+      height: 140px;
+      left: 5%;
+    }
+    
+    .starry-bg .constellation-cassiopeia {
+      width: 100px;
+      height: 60px;
+      left: 20%;
+    }
+    
+    /* Reduce nebula complexity on mobile */
+    .starry-bg .nebula-layer {
+      background: 
+        radial-gradient(ellipse 400px 300px at 30% 70%, hsla(240, 100%, 5%, 0.2) 0%, transparent 50%),
+        radial-gradient(ellipse 300px 200px at 70% 30%, hsla(280, 80%, 8%, 0.15) 0%, transparent 50%);
+      opacity: 0.4;
+    }
+  }
+
+  @media (max-width: 480px) {
+    /* Further reduce effects on small mobile screens */
+    .starry-bg .shooting-star {
+      display: none;
+    }
+    
+    .starry-bg .constellation {
+      opacity: 0.1;
+    }
+    
+    .starry-bg .nebula-layer {
+      opacity: 0.2;
+    }
+  }
+
+  /* High refresh rate displays optimization */
+  @media (min-resolution: 120dpi) {
+    .starry-bg * {
+      transform: translateZ(0);
+      backface-visibility: hidden;
+    }
+  }
+
   .node {
     background: linear-gradient(145deg, hsl(0 0% 16%), hsl(0 0% 10%));
     border: 1px solid hsl(0 0% 25%);
