@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import OrchestrationPanel from "./OrchestrationPanel";
 import SchematicDiagram from "./SchematicDiagram";
+import { OrchestrationProvider } from "@/providers/OrchestrationProvider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -150,7 +151,9 @@ void loop() {
 
         {/* Orchestration Tab Content */}
         <TabsContent value="orchestration" className="flex-1 overflow-y-auto m-0">
-          <OrchestrationPanel project={project} />
+          <OrchestrationProvider projectId={project.id}>
+            <OrchestrationPanel project={project} />
+          </OrchestrationProvider>
         </TabsContent>
 
         {/* Schematic Tab Content */}

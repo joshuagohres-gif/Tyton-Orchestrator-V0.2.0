@@ -1,14 +1,13 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Pause, Square, Send, CheckCircle, Clock, AlertCircle, Loader2 } from "lucide-react";
-import type { ProjectWithModules, OrchestrationStage, OrchestrationStatus } from "@/types/project";
+import { Play, Pause, Square, Send, CheckCircle, Clock, AlertCircle, Loader2, Wifi, WifiOff } from "lucide-react";
+import { useOrchestration } from "@/providers/OrchestrationProvider";
+import type { ProjectWithModules, OrchestrationStage } from "@/types/project";
 
 interface OrchestrationPanelProps {
   project: ProjectWithModules;
@@ -18,62 +17,12 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
   const [userBrief, setUserBrief] = useState("");
   const [agentMessage, setAgentMessage] = useState("");
   const { toast } = useToast();
+  
+  // Use the enhanced OrchestrationProvider
+  const { state, actions } = useOrchestration();
+  const { status: orchestrationStatus, isLoading: statusLoading, error, isWebSocketConnected, logs } = state;
 
-  // Get orchestration status
-  const { data: orchestrationStatus, isLoading: statusLoading } = useQuery<OrchestrationStatus>({
-    queryKey: ["/api/projects", project.id, "orchestrator/status"],
-    refetchInterval: 2000, // Poll every 2 seconds when orchestration is running
-  });
-
-  const startOrchestrationMutation = useMutation({
-    mutationFn: async (brief: string) => {
-      const response = await apiRequest("POST", `/api/projects/${project.id}/orchestrator/start`, {
-        userBrief: brief,
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Orchestration Started",
-        description: "AI is now processing your hardware design requirements.",
-      });
-      setUserBrief("");
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id, "orchestrator/status"] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to Start Orchestration",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const controlOrchestrationMutation = useMutation({
-    mutationFn: async (action: "pause" | "resume" | "cancel") => {
-      const response = await apiRequest("PUT", `/api/projects/${project.id}/orchestrator/control`, {
-        action,
-        orchestratorRunId: orchestrationStatus?.id,
-      });
-      return response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Orchestration Updated",
-        description: `Successfully ${data.action}d orchestration.`,
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id, "orchestrator/status"] });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Control Action Failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleStartOrchestration = () => {
+  const handleStartOrchestration = async () => {
     if (!userBrief.trim()) {
       toast({
         title: "Brief Required",
@@ -82,11 +31,33 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
       });
       return;
     }
-    startOrchestrationMutation.mutate(userBrief);
+    
+    try {
+      await actions.startOrchestration(project.id, userBrief);
+      setUserBrief("");
+    } catch (error) {
+      // Error handling is done in the provider
+    }
   };
 
-  const handleControlAction = (action: "pause" | "resume" | "cancel") => {
-    controlOrchestrationMutation.mutate(action);
+  const handleControlAction = async (action: "pause" | "resume" | "cancel") => {
+    if (!orchestrationStatus?.id) return;
+    
+    try {
+      switch (action) {
+        case "pause":
+          await actions.pauseOrchestration(orchestrationStatus.id);
+          break;
+        case "resume":
+          await actions.resumeOrchestration(orchestrationStatus.id);
+          break;
+        case "cancel":
+          await actions.cancelOrchestration(orchestrationStatus.id);
+          break;
+      }
+    } catch (error) {
+      // Error handling is done in the provider
+    }
   };
 
   const handleSendAgentMessage = () => {
@@ -157,10 +128,11 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
     },
   ];
 
-  const mockLogs = [
-    { stage: 'Planning', message: 'Analyzing component requirements...', timestamp: '2 min ago' },
-    { stage: 'Building', message: 'Generating schematic for DHT22 sensor connection...', timestamp: '1 min ago' },
-    { stage: 'Building', message: 'Optimizing PCB layout for minimal interference...', timestamp: '30 sec ago' },
+  // Use real logs from provider, with fallback to mock data for demo
+  const displayLogs = logs.length > 0 ? logs : [
+    { id: '1', stage: 'Planning', message: 'Analyzing component requirements...', timestamp: new Date(Date.now() - 120000).toISOString(), level: 'info' as const },
+    { id: '2', stage: 'Building', message: 'Generating schematic for DHT22 sensor connection...', timestamp: new Date(Date.now() - 60000).toISOString(), level: 'info' as const },
+    { id: '3', stage: 'Building', message: 'Optimizing PCB layout for minimal interference...', timestamp: new Date(Date.now() - 30000).toISOString(), level: 'info' as const },
   ];
 
   const canStart = orchestrationStatus?.status === 'idle' || orchestrationStatus?.status === 'completed' || orchestrationStatus?.status === 'error' || orchestrationStatus?.status === 'cancelled';
@@ -173,14 +145,29 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
       {canStart && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-foreground">AI Orchestration</h3>
+            <div className="flex items-center space-x-3">
+              <h3 className="text-lg font-semibold text-foreground">AI Orchestration</h3>
+              <div className="flex items-center space-x-1" data-testid="websocket-status">
+                {isWebSocketConnected ? (
+                  <>
+                    <Wifi className="w-4 h-4 text-green-500" />
+                    <span className="text-xs text-green-500">Live</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Polling</span>
+                  </>
+                )}
+              </div>
+            </div>
             <Button
               onClick={handleStartOrchestration}
-              disabled={startOrchestrationMutation.isPending}
+              disabled={statusLoading}
               className="bg-primary hover:bg-primary/90 text-primary-foreground glow-gold"
               data-testid="button-start-orchestration"
             >
-              {startOrchestrationMutation.isPending ? (
+              {statusLoading ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Play className="w-4 h-4 mr-2" />
@@ -258,7 +245,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
               variant="secondary"
               size="sm"
               onClick={() => handleControlAction('pause')}
-              disabled={controlOrchestrationMutation.isPending}
+              disabled={statusLoading}
               data-testid="button-pause-orchestration"
             >
               <Pause className="w-4 h-4 mr-2" />
@@ -270,7 +257,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
               variant="secondary"
               size="sm"
               onClick={() => handleControlAction('resume')}
-              disabled={controlOrchestrationMutation.isPending}
+              disabled={statusLoading}
               data-testid="button-resume-orchestration"
             >
               <Play className="w-4 h-4 mr-2" />
@@ -295,7 +282,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
         <h4 className="text-sm font-medium text-foreground">AI Agent Console</h4>
         <ScrollArea className="h-32 bg-secondary border border-border rounded-lg p-3">
           <div className="space-y-2">
-            {mockLogs.map((log, index) => (
+            {displayLogs.slice(-10).map((log, index) => (
               <div key={index} className="text-xs">
                 <span className="text-accent font-medium">[{log.stage}]</span>
                 <span className="text-muted-foreground ml-2">{log.message}</span>

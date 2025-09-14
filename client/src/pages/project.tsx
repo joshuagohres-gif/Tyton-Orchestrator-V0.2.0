@@ -7,11 +7,12 @@ import PropertiesPanel from "@/components/PropertiesPanel";
 import FloatingOrchestrationStatus from "@/components/FloatingOrchestrationStatus";
 import { Microchip, Save, Download, Settings, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { ProjectWithModules } from "@/types/project";
 
 export default function Project() {
   const { id } = useParams<{ id: string }>();
 
-  const { data: project, isLoading, error } = useQuery({
+  const { data: project, isLoading, error } = useQuery<ProjectWithModules>({
     queryKey: ["/api/projects", id],
     enabled: !!id,
   });
