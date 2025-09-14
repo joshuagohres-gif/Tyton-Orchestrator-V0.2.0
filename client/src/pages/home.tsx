@@ -65,6 +65,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen starry-bg">
+      {/* Constellation Overlays */}
+      <div className="constellation constellation-ursa-major"></div>
+      <div className="constellation constellation-orion"></div>
+      <div className="constellation constellation-cassiopeia"></div>
+      
       {/* Header */}
       <header className="bg-card border-b border-border px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">

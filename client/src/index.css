@@ -204,6 +204,136 @@
     100% { opacity: 0.3; }
   }
 
+  /* Constellation Outlines */
+  .starry-bg .constellation {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .starry-bg .constellation-ursa-major {
+    top: 10%;
+    right: 20%;
+    width: 200px;
+    height: 120px;
+    animation: constellation-cycle 60s infinite;
+    animation-delay: 0s;
+  }
+
+  .starry-bg .constellation-ursa-major::before {
+    content: '';
+    position: absolute;
+    /* Big Dipper bowl */
+    top: 20px;
+    left: 40px;
+    width: 60px;
+    height: 40px;
+    border-top: 1px solid hsl(195 100% 50%);
+    border-right: 1px solid hsl(195 100% 50%);
+    border-bottom: 1px solid hsl(195 100% 50%);
+    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
+  }
+
+  .starry-bg .constellation-ursa-major::after {
+    content: '';
+    position: absolute;
+    /* Big Dipper handle */
+    top: 20px;
+    left: 100px;
+    width: 80px;
+    height: 2px;
+    background: linear-gradient(45deg, hsl(195 100% 50%) 0%, transparent 50%, hsl(195 100% 50%) 100%);
+    transform: rotate(-30deg);
+    transform-origin: left center;
+    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
+  }
+
+  .starry-bg .constellation-orion {
+    bottom: 25%;
+    left: 15%;
+    width: 150px;
+    height: 200px;
+    animation: constellation-cycle 60s infinite;
+    animation-delay: 20s;
+  }
+
+  .starry-bg .constellation-orion::before {
+    content: '';
+    position: absolute;
+    /* Orion's Belt */
+    top: 100px;
+    left: 50px;
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(90deg, 
+      transparent 0%, hsl(195 100% 50%) 20%, 
+      transparent 40%, hsl(195 100% 50%) 60%, 
+      transparent 80%, hsl(195 100% 50%) 100%);
+    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
+  }
+
+  .starry-bg .constellation-orion::after {
+    content: '';
+    position: absolute;
+    /* Orion's shoulders and body lines */
+    top: 40px;
+    left: 75px;
+    width: 2px;
+    height: 120px;
+    background: linear-gradient(180deg, 
+      hsl(195 100% 50%) 0%, 
+      transparent 30%, 
+      hsl(195 100% 50%) 50%, 
+      transparent 70%, 
+      hsl(195 100% 50%) 100%);
+    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
+  }
+
+  .starry-bg .constellation-cassiopeia {
+    top: 15%;
+    left: 30%;
+    width: 140px;
+    height: 80px;
+    animation: constellation-cycle 60s infinite;
+    animation-delay: 40s;
+  }
+
+  .starry-bg .constellation-cassiopeia::before {
+    content: '';
+    position: absolute;
+    /* Cassiopeia W shape - left part */
+    top: 40px;
+    left: 20px;
+    width: 2px;
+    height: 30px;
+    background: hsl(195 100% 50%);
+    transform: rotate(25deg);
+    transform-origin: bottom center;
+    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
+  }
+
+  .starry-bg .constellation-cassiopeia::after {
+    content: '';
+    position: absolute;
+    /* Cassiopeia W shape - right part */
+    top: 40px;
+    right: 20px;
+    width: 2px;
+    height: 30px;
+    background: hsl(195 100% 50%);
+    transform: rotate(-25deg);
+    transform-origin: bottom center;
+    filter: drop-shadow(0 0 3px hsl(195 100% 50% / 0.4));
+  }
+
+  @keyframes constellation-cycle {
+    0%, 15% { opacity: 0; }
+    20%, 30% { opacity: 0.3; }
+    35%, 80% { opacity: 0; }
+    100% { opacity: 0; }
+  }
+
   .node {
     background: linear-gradient(145deg, hsl(0 0% 16%), hsl(0 0% 10%));
     border: 1px solid hsl(0 0% 25%);
