@@ -181,8 +181,31 @@ Generate a JSON guide sheet with the following structure:
         "features": ["WiFi", "GPIO"]
       },
       "recommendedParts": ["ESP32-DEVKITC-32D", "Arduino Uno R3"]
+    },
+    {
+      "category": "sensor",
+      "required": true,
+      "count": { "min": 1, "max": 3 },
+      "allowedTypes": ["DHT22", "BME280", "DS18B20"],
+      "specifications": {
+        "type": "temperature and humidity",
+        "interface": "I2C or OneWire"
+      }
     }
   ],
+
+IMPORTANT: Use only these standard component categories for "category" field:
+- microcontroller (MCUs, Arduino, ESP32, etc.)
+- sensor (temperature, humidity, motion, light, etc.)
+- communication (WiFi, Bluetooth, LoRa, etc.)
+- power (batteries, regulators, chargers, etc.)
+- passive (resistors, capacitors, inductors, etc.)
+- actuator (motors, LEDs, buzzers, relays, etc.)
+- display (LCD, OLED, e-ink, etc.)
+- connector (headers, terminals, jacks, etc.)
+
+Use specific sensor types in "allowedTypes" and "specifications" but keep "category" as "sensor".
+
   "electricalConstraints": {
     "maxVoltage": 12,
     "maxCurrent": 2,
@@ -1255,6 +1278,52 @@ Provide real, available components with manufacturer part numbers. Response in J
   }
 }
 
+// Map specific component categories to general circuit component types
+function mapCategoryToComponentType(category: string): string {
+  const categoryMappings: Record<string, string> = {
+    // Sensor mappings
+    'temperatureSensor': 'sensor',
+    'humiditySensor': 'sensor',
+    'pressureSensor': 'sensor',
+    'lightSensor': 'sensor',
+    'motionSensor': 'sensor',
+    'proximitySensor': 'sensor',
+    'accelerometer': 'sensor',
+    'gyroscope': 'sensor',
+    'magnetometer': 'sensor',
+    'gps': 'sensor',
+    'camera': 'sensor',
+    // Communication mappings
+    'wifi': 'communication',
+    'bluetooth': 'communication',
+    'zigbee': 'communication',
+    'lora': 'communication',
+    'ethernet': 'communication',
+    // Power mappings
+    'battery': 'power',
+    'charger': 'power',
+    'regulator': 'power',
+    'converter': 'power',
+    // Actuator mappings
+    'motor': 'actuator',
+    'servo': 'actuator',
+    'led': 'actuator',
+    'buzzer': 'actuator',
+    'relay': 'actuator',
+    // Display mappings
+    'lcd': 'display',
+    'oled': 'display',
+    'eink': 'display',
+    // Passive mappings
+    'resistor': 'passive',
+    'capacitor': 'passive',
+    'inductor': 'passive',
+    'crystal': 'passive',
+  };
+  
+  return categoryMappings[category] || category;
+}
+
 // Validate circuit against guide sheet constraints
 export function validateCircuitAgainstGuideSheet(
   circuit: CircuitGenerationResponse,
@@ -1269,8 +1338,10 @@ export function validateCircuitAgainstGuideSheet(
     const category = component.type;
     componentCategories.set(category, (componentCategories.get(category) || 0) + 1);
     
-    // Find matching requirement
-    const requirement = guideSheet.componentRequirements.find(r => r.category === category);
+    // Find matching requirement (check both direct match and mapped match)
+    const requirement = guideSheet.componentRequirements.find(r => 
+      r.category === category || mapCategoryToComponentType(r.category) === category
+    );
     if (requirement) {
       // Check if component type is allowed
       if (requirement.allowedTypes && requirement.allowedTypes.length > 0) {
@@ -1287,7 +1358,10 @@ export function validateCircuitAgainstGuideSheet(
   
   // Check component counts
   for (const requirement of guideSheet.componentRequirements) {
-    const count = componentCategories.get(requirement.category) || 0;
+    // Map the guide sheet category to a general circuit component type
+    const mappedCategory = mapCategoryToComponentType(requirement.category);
+    const count = componentCategories.get(mappedCategory) || 0;
+    
     if (requirement.required && count === 0) {
       violations.push(`Required component category '${requirement.category}' is missing`);
     }
