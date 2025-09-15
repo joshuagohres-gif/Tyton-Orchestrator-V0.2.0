@@ -25,6 +25,7 @@ interface OrchestrationLog {
 
 interface OrchestrationActions {
   startOrchestration: (userBrief: string) => Promise<void>;
+  startPipelineExecution: (templateId: string, projectConfig?: Record<string, any>) => Promise<void>;
   controlOrchestration: (action: 'pause' | 'resume' | 'cancel') => Promise<void>;
   retry: () => void;
   clearError: () => void;
@@ -215,6 +216,34 @@ export function OrchestrationProvider({ children, projectId }: OrchestrationProv
     },
   });
 
+  // Pipeline execution mutation
+  const pipelineExecutionMutation = useMutation({
+    mutationFn: async ({ templateId, projectConfig }: { templateId: string; projectConfig?: Record<string, any> }) => {
+      const response = await apiRequest("POST", `/api/projects/${projectId}/orchestrator/pipeline/start`, {
+        templateId,
+        projectConfig: projectConfig || {},
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      dispatch({ type: 'CLEAR_ERROR' });
+      dispatch({ type: 'CLEAR_LOGS' });
+      toast({
+        title: "Pipeline Started",
+        description: "Pipeline execution has been initiated.",
+      });
+      statusQuery.refetch(); // Immediately refetch status
+    },
+    onError: (error: Error) => {
+      dispatch({ type: 'SET_ERROR', payload: error.message });
+      toast({
+        title: "Failed to Start Pipeline",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const controlMutation = useMutation({
     mutationFn: async ({ action, orchestratorRunId }: { action: string; orchestratorRunId: string }) => {
       const response = await apiRequest("PUT", `/api/projects/${projectId}/orchestrator/control`, {
@@ -245,6 +274,9 @@ export function OrchestrationProvider({ children, projectId }: OrchestrationProv
   const actions: OrchestrationActions = {
     startOrchestration: async (userBrief: string) => {
       return startMutation.mutateAsync({ userBrief });
+    },
+    startPipelineExecution: async (templateId: string, projectConfig?: Record<string, any>) => {
+      return pipelineExecutionMutation.mutateAsync({ templateId, projectConfig });
     },
     controlOrchestration: async (action: 'pause' | 'resume' | 'cancel') => {
       if (!state.status?.id) throw new Error('No active orchestration to control');

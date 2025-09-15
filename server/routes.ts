@@ -186,6 +186,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Pipeline template execution endpoint
+  app.post("/api/projects/:id/orchestrator/pipeline/start", async (req, res) => {
+    try {
+      const { templateId, projectConfig } = req.body;
+      if (!templateId) {
+        return res.status(400).json({ error: "Pipeline template ID required" });
+      }
+
+      const orchestratorRunId = await orchestrationEngine.startPipelineExecution(
+        req.params.id,
+        templateId,
+        projectConfig || {}
+      );
+      
+      res.json({ orchestratorRunId, status: "running", templateId });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("already running")) {
+        return res.status(409).json({ error: error.message });
+      }
+      if (error instanceof Error && error.message.includes("not found")) {
+        return res.status(404).json({ error: error.message });
+      }
+      console.error("Pipeline execution error:", error);
+      res.status(500).json({ error: "Failed to start pipeline execution" });
+    }
+  });
+
   app.put("/api/projects/:id/orchestrator/control", async (req, res) => {
     try {
       const { action, orchestratorRunId } = req.body;

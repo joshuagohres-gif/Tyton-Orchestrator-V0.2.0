@@ -7,6 +7,8 @@ import {
   orchestratorRuns,
   stageRuns,
   bomItems,
+  pipelineTemplates,
+  stageDefinitions,
   type User, 
   type InsertUser,
   type Project,
@@ -21,7 +23,9 @@ import {
   type InsertOrchestratorRun,
   type StageRun,
   type InsertStageRun,
-  type BomItem
+  type BomItem,
+  type PipelineTemplate,
+  type StageDefinition
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, like, and, desc, asc } from "drizzle-orm";
@@ -67,6 +71,10 @@ export interface IStorage {
 
   // BOM
   getProjectBOM(projectId: string): Promise<BomItem[]>;
+
+  // Pipeline Templates
+  getPipelineTemplate(templateId: string): Promise<PipelineTemplate | undefined>;
+  getStageDefinitionsByTemplate(templateId: string): Promise<StageDefinition[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -346,6 +354,26 @@ export class DatabaseStorage implements IStorage {
         .where(eq(stageRuns.id, id))
         .returning();
       return updatedRun;
+    });
+  }
+
+  async getPipelineTemplate(templateId: string): Promise<PipelineTemplate | undefined> {
+    return this.withRetry(async () => {
+      const [template] = await db
+        .select()
+        .from(pipelineTemplates)
+        .where(eq(pipelineTemplates.id, templateId));
+      return template || undefined;
+    });
+  }
+
+  async getStageDefinitionsByTemplate(templateId: string): Promise<StageDefinition[]> {
+    return this.withRetry(async () => {
+      return await db
+        .select()
+        .from(stageDefinitions)
+        .where(eq(stageDefinitions.templateId, templateId))
+        .orderBy(asc(stageDefinitions.order));
     });
   }
 }

@@ -115,6 +115,309 @@ export class OrchestrationEngine {
     return orchestratorRun.id;
   }
 
+  async startPipelineExecution(projectId: string, templateId: string, projectConfig: Record<string, any> = {}): Promise<string> {
+    const project = await storage.getProject(projectId);
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    // Get pipeline template
+    const template = await storage.getPipelineTemplate(templateId);
+    if (!template) {
+      throw new Error("Pipeline template not found");
+    }
+
+    // Check if orchestration is already running
+    const existingRun = await storage.getLatestOrchestratorRun(projectId);
+    if (existingRun && existingRun.status === "running") {
+      throw new Error("Orchestration already running for this project");
+    }
+
+    // Get stage definitions for this template
+    const stageDefinitions = await storage.getStageDefinitionsByTemplate(templateId);
+    if (!stageDefinitions || stageDefinitions.length === 0) {
+      throw new Error("No stages defined for this pipeline template");
+    }
+
+    // Sort stages by order
+    const sortedStages = [...stageDefinitions].sort((a, b) => a.order - b.order);
+    const firstStage = sortedStages[0];
+
+    // Create new orchestration run with pipeline context
+    const orchestratorRun = await storage.createOrchestratorRun({
+      projectId,
+      status: "running",
+      currentStage: firstStage.name,
+      progress: 0,
+      context: {
+        templateId,
+        templateName: template.name,
+        projectTitle: project.title,
+        projectConfig,
+        stageDefinitions: sortedStages,
+        startedAt: new Date().toISOString(),
+        isPipelineExecution: true
+      }
+    });
+
+    // Start the pipeline execution process
+    this.executePipeline(orchestratorRun.id);
+
+    return orchestratorRun.id;
+  }
+
+  private async executePipeline(orchestratorRunId: string) {
+    try {
+      const orchestratorRun = await storage.getOrchestratorRun(orchestratorRunId);
+      if (!orchestratorRun) return;
+
+      const context = orchestratorRun.context as any;
+      if (!context.isPipelineExecution || !context.stageDefinitions) {
+        throw new Error("Invalid pipeline execution context");
+      }
+
+      const stageDefinitions = context.stageDefinitions;
+      
+      // Execute stages in order, respecting dependencies and parallel execution
+      for (let i = 0; i < stageDefinitions.length; i++) {
+        const stage = stageDefinitions[i];
+        
+        try {
+          // Check dependencies before executing stage
+          if (stage.dependencies && stage.dependencies.length > 0) {
+            await this.validateStageDependencies(orchestratorRunId, stage.dependencies);
+          }
+
+          // Execute the stage
+          await this.executePipelineStage(orchestratorRunId, stage);
+          
+          // Update overall progress
+          const overallProgress = Math.round(((i + 1) / stageDefinitions.length) * 100);
+          await storage.updateOrchestratorRun(orchestratorRunId, {
+            progress: overallProgress
+          });
+
+        } catch (error) {
+          const stageError = this.categorizeError(error, stage.name);
+          
+          // Handle stage error with retry logic
+          const shouldRetry = await this.handlePipelineStageError(orchestratorRunId, stage, stageError);
+          
+          if (!shouldRetry) {
+            // If not retrying, stop pipeline execution
+            return;
+          }
+        }
+      }
+
+      // Complete pipeline execution
+      await storage.updateOrchestratorRun(orchestratorRunId, {
+        status: "completed",
+        progress: 100,
+        completedAt: new Date()
+      });
+
+      this.broadcastUpdate(orchestratorRunId, "completed", 100, "Pipeline completed successfully");
+
+    } catch (error) {
+      const orchestratorRun = await storage.getOrchestratorRun(orchestratorRunId);
+      const stageError = this.categorizeError(error, orchestratorRun?.currentStage || 'unknown');
+      await this.handleStageError(orchestratorRunId, stageError);
+    }
+  }
+
+  private async executePipelineStage(orchestratorRunId: string, stageDefinition: any): Promise<void> {
+    // Create stage run record
+    const stageRun = await storage.createStageRun({
+      orchestratorRunId,
+      stageName: stageDefinition.name,
+      status: "running",
+      input: {},
+      output: {},
+      attempts: 1
+    });
+
+    // Update orchestrator current stage
+    await storage.updateOrchestratorRun(orchestratorRunId, {
+      currentStage: stageDefinition.name
+    });
+
+    this.broadcastUpdate(
+      orchestratorRunId, 
+      stageDefinition.name, 
+      0, 
+      `Starting ${stageDefinition.displayName}...`
+    );
+
+    // Execute stage based on category
+    try {
+      switch (stageDefinition.category) {
+        case 'ai_generation':
+          await this.executeAIGenerationStage(orchestratorRunId, stageDefinition, stageRun.id);
+          break;
+        case 'validation':
+          await this.executeValidationStageFromPipeline(orchestratorRunId, stageDefinition, stageRun.id);
+          break;
+        case 'export':
+          await this.executeExportStageFromPipeline(orchestratorRunId, stageDefinition, stageRun.id);
+          break;
+        case 'user_input':
+          await this.executeUserInputStage(orchestratorRunId, stageDefinition, stageRun.id);
+          break;
+        default:
+          // Try to map to existing hardcoded stages
+          await this.executeStageByName(orchestratorRunId, stageDefinition.name);
+      }
+
+      // Mark stage as completed
+      await storage.updateStageRun(stageRun.id, {
+        status: "completed",
+        completedAt: new Date()
+      });
+
+      this.broadcastUpdate(
+        orchestratorRunId, 
+        stageDefinition.name, 
+        100, 
+        `${stageDefinition.displayName} completed successfully`
+      );
+
+    } catch (error) {
+      // Mark stage as failed
+      await storage.updateStageRun(stageRun.id, {
+        status: "error",
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        completedAt: new Date()
+      });
+      throw error;
+    }
+  }
+
+  private async validateStageDependencies(orchestratorRunId: string, dependencies: string[]): Promise<void> {
+    const stageRuns = await storage.getStageRuns(orchestratorRunId);
+    
+    for (const dependency of dependencies) {
+      const dependencyStageRun = stageRuns.find(run => run.stageName === dependency);
+      
+      if (!dependencyStageRun) {
+        throw new Error(`Dependency stage '${dependency}' not found`);
+      }
+      
+      if (dependencyStageRun.status !== 'completed' && dependencyStageRun.status !== 'skipped') {
+        throw new Error(`Dependency stage '${dependency}' has not completed successfully`);
+      }
+    }
+  }
+
+  private async handlePipelineStageError(
+    orchestratorRunId: string,
+    stageDefinition: any,
+    stageError: StageError
+  ): Promise<boolean> {
+    // Get retry policy from stage definition
+    const retryPolicy = stageDefinition.retryPolicy || DEFAULT_RETRY_POLICIES[stageDefinition.category] || DEFAULT_RETRY_POLICIES.ai_generation;
+    
+    // Check if stage can be retried
+    const currentAttempts = this.retryAttempts.get(`${orchestratorRunId}-${stageDefinition.name}`) || 0;
+    
+    if (currentAttempts < retryPolicy.maxAttempts && stageError.retryable) {
+      // Increment retry attempts
+      this.retryAttempts.set(`${orchestratorRunId}-${stageDefinition.name}`, currentAttempts + 1);
+      
+      // Calculate backoff delay
+      const delay = this.calculateBackoffDelay(retryPolicy, currentAttempts);
+      
+      this.broadcastUpdate(
+        orchestratorRunId,
+        stageDefinition.name,
+        0,
+        `Stage failed, retrying in ${Math.round(delay / 1000)}s... (attempt ${currentAttempts + 1}/${retryPolicy.maxAttempts})`
+      );
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Retry the stage
+      await this.executePipelineStage(orchestratorRunId, stageDefinition);
+      return true;
+    }
+    
+    // Check if stage is optional and can be skipped
+    if (stageDefinition.isOptional) {
+      // Skip this stage
+      const stageRuns = await storage.getStageRuns(orchestratorRunId);
+      const failedStageRun = stageRuns.find(run => run.stageName === stageDefinition.name && run.status === 'error');
+      
+      if (failedStageRun) {
+        await storage.updateStageRun(failedStageRun.id, {
+          status: "skipped"
+        });
+      }
+      
+      this.broadcastUpdate(
+        orchestratorRunId,
+        stageDefinition.name,
+        100,
+        `Optional stage skipped due to failure`
+      );
+      
+      return true; // Continue pipeline
+    }
+    
+    // Stage cannot be retried or skipped, fail the pipeline
+    await storage.updateOrchestratorRun(orchestratorRunId, {
+      status: "error",
+      completedAt: new Date()
+    });
+    
+    this.broadcastUpdate(
+      orchestratorRunId,
+      "error",
+      0,
+      `Pipeline failed at stage: ${stageDefinition.displayName}`
+    );
+    
+    return false; // Stop pipeline
+  }
+
+  // Placeholder implementations for pipeline stage execution
+  private async executeAIGenerationStage(orchestratorRunId: string, stageDefinition: any, stageRunId: string): Promise<void> {
+    // Use existing AI generation logic or implement new pipeline-specific logic
+    await this.executePlanningStage(orchestratorRunId);
+  }
+
+  private async executeValidationStageFromPipeline(orchestratorRunId: string, stageDefinition: any, stageRunId: string): Promise<void> {
+    // Use existing validation logic or implement new pipeline-specific logic
+    await this.executeValidationStage(orchestratorRunId);
+  }
+
+  private async executeExportStageFromPipeline(orchestratorRunId: string, stageDefinition: any, stageRunId: string): Promise<void> {
+    // Use existing export logic or implement new pipeline-specific logic
+    await this.executeExportStage(orchestratorRunId);
+  }
+
+  private async executeUserInputStage(orchestratorRunId: string, stageDefinition: any, stageRunId: string): Promise<void> {
+    // Pause execution and wait for user input
+    await storage.updateOrchestratorRun(orchestratorRunId, {
+      status: "paused"
+    });
+    
+    this.broadcastUpdate(
+      orchestratorRunId,
+      stageDefinition.name,
+      50,
+      `Waiting for user input: ${stageDefinition.description || stageDefinition.displayName}`
+    );
+    
+    // In a real implementation, this would wait for user input through UI
+    // For now, we'll simulate completion after a delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    await storage.updateOrchestratorRun(orchestratorRunId, {
+      status: "running"
+    });
+  }
+
   private async executeOrchestration(orchestratorRunId: string) {
     try {
       const orchestratorRun = await storage.getOrchestratorRun(orchestratorRunId);
