@@ -19,7 +19,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
   const { toast } = useToast();
   
   // Use the enhanced OrchestrationProvider
-  const { state, actions } = useOrchestration();
+  const { state, startPending, controlPending, actions } = useOrchestration();
   const { status: orchestrationStatus, isLoading: statusLoading, error, isWebSocketConnected, logs } = state;
 
   const handleStartOrchestration = async () => {
@@ -33,7 +33,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
     }
     
     try {
-      await actions.startOrchestration(project.id, userBrief);
+      await actions.startOrchestration(userBrief);
       setUserBrief("");
     } catch (error) {
       // Error handling is done in the provider
@@ -44,17 +44,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
     if (!orchestrationStatus?.id) return;
     
     try {
-      switch (action) {
-        case "pause":
-          await actions.pauseOrchestration(orchestrationStatus.id);
-          break;
-        case "resume":
-          await actions.resumeOrchestration(orchestrationStatus.id);
-          break;
-        case "cancel":
-          await actions.cancelOrchestration(orchestrationStatus.id);
-          break;
-      }
+      await actions.controlOrchestration(action);
     } catch (error) {
       // Error handling is done in the provider
     }
@@ -163,11 +153,11 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
             </div>
             <Button
               onClick={handleStartOrchestration}
-              disabled={statusLoading}
+              disabled={startPending}
               className="bg-primary hover:bg-primary/90 text-primary-foreground glow-gold"
               data-testid="button-start-orchestration"
             >
-              {statusLoading ? (
+              {startPending ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Play className="w-4 h-4 mr-2" />
@@ -245,7 +235,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
               variant="secondary"
               size="sm"
               onClick={() => handleControlAction('pause')}
-              disabled={statusLoading}
+              disabled={controlPending}
               data-testid="button-pause-orchestration"
             >
               <Pause className="w-4 h-4 mr-2" />
@@ -257,7 +247,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
               variant="secondary"
               size="sm"
               onClick={() => handleControlAction('resume')}
-              disabled={statusLoading}
+              disabled={controlPending}
               data-testid="button-resume-orchestration"
             >
               <Play className="w-4 h-4 mr-2" />
@@ -268,7 +258,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
             variant="destructive"
             size="sm"
             onClick={() => handleControlAction('cancel')}
-            disabled={controlOrchestrationMutation.isPending}
+            disabled={controlPending}
             data-testid="button-cancel-orchestration"
           >
             <Square className="w-4 h-4 mr-2" />

@@ -24,10 +24,8 @@ interface OrchestrationLog {
 }
 
 interface OrchestrationActions {
-  startOrchestration: (projectId: string, userBrief: string) => Promise<void>;
-  pauseOrchestration: (orchestratorRunId: string) => Promise<void>;
-  resumeOrchestration: (orchestratorRunId: string) => Promise<void>;
-  cancelOrchestration: (orchestratorRunId: string) => Promise<void>;
+  startOrchestration: (userBrief: string) => Promise<void>;
+  controlOrchestration: (action: 'pause' | 'resume' | 'cancel') => Promise<void>;
   retry: () => void;
   clearError: () => void;
 }
@@ -85,6 +83,8 @@ function orchestrationReducer(state: OrchestrationState, action: OrchestrationAc
 
 const OrchestrationContext = createContext<{
   state: OrchestrationState;
+  startPending: boolean;
+  controlPending: boolean;
   actions: OrchestrationActions;
 } | null>(null);
 
@@ -97,12 +97,12 @@ export function OrchestrationProvider({ children, projectId }: OrchestrationProv
   const [state, dispatch] = useReducer(orchestrationReducer, initialState);
   const { toast } = useToast();
 
-  // Smart polling strategy - adjust interval based on status
+  // Smart polling strategy - check WebSocket first, then adjust interval based on status
   const getDynamicRefetchInterval = () => {
+    if (state.isWebSocketConnected) return false; // Disable polling when WebSocket is active
     if (!state.status) return 5000; // Initial fetch
     if (state.status.status === 'running') return 1000; // Fast updates during execution
     if (state.status.status === 'paused') return 3000; // Medium updates when paused
-    if (state.isWebSocketConnected) return false; // Disable polling when WebSocket is active
     return 10000; // Slow updates for idle/completed states
   };
 
@@ -143,14 +143,17 @@ export function OrchestrationProvider({ children, projectId }: OrchestrationProv
     }
   }, [statusQuery.error]);
 
-  // Handle WebSocket messages
+  // Handle WebSocket messages with project scoping
   useEffect(() => {
     if (!lastMessage) return;
 
     try {
       const data = JSON.parse(lastMessage.data);
       
-      if (data.type === 'orchestration_progress' && isOrchestrationUpdate(data)) {
+      // Only process messages for the current project
+      if (data.type === 'orchestration_progress' && 
+          data.projectId === projectId && 
+          isOrchestrationUpdate(data)) {
         // Update query cache directly to avoid extra fetch
         queryClient.setQueryData(["/api/projects", projectId, "orchestrator/status"], data);
         dispatch({ type: 'SET_STATUS', payload: data });
@@ -240,17 +243,12 @@ export function OrchestrationProvider({ children, projectId }: OrchestrationProv
 
   // Actions for external components
   const actions: OrchestrationActions = {
-    startOrchestration: async (projectId: string, userBrief: string) => {
+    startOrchestration: async (userBrief: string) => {
       return startMutation.mutateAsync({ userBrief });
     },
-    pauseOrchestration: async (orchestratorRunId: string) => {
-      return controlMutation.mutateAsync({ action: 'pause', orchestratorRunId });
-    },
-    resumeOrchestration: async (orchestratorRunId: string) => {
-      return controlMutation.mutateAsync({ action: 'resume', orchestratorRunId });
-    },
-    cancelOrchestration: async (orchestratorRunId: string) => {
-      return controlMutation.mutateAsync({ action: 'cancel', orchestratorRunId });
+    controlOrchestration: async (action: 'pause' | 'resume' | 'cancel') => {
+      if (!state.status?.id) throw new Error('No active orchestration to control');
+      return controlMutation.mutateAsync({ action, orchestratorRunId: state.status.id });
     },
     retry: () => {
       dispatch({ type: 'CLEAR_ERROR' });
@@ -275,7 +273,12 @@ export function OrchestrationProvider({ children, projectId }: OrchestrationProv
   }, [statusQuery.data, statusQuery.isLoading, statusQuery.error]);
 
   return (
-    <OrchestrationContext.Provider value={{ state, actions }}>
+    <OrchestrationContext.Provider value={{ 
+      state, 
+      startPending: startMutation.isPending,
+      controlPending: controlMutation.isPending,
+      actions 
+    }}>
       {children}
     </OrchestrationContext.Provider>
   );
