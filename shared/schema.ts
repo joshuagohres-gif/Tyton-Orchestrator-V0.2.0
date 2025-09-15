@@ -88,6 +88,9 @@ export const stageRuns = pgTable("stage_runs", {
   attempts: integer("attempts").default(0).notNull(),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
+  // Enhanced pipeline linkage for better integrity
+  pipelineRunId: uuid("pipeline_run_id").references(() => pipelineRuns.id, { onDelete: "cascade" }),
+  stageDefinitionId: uuid("stage_definition_id").references(() => stageDefinitions.id),
 });
 
 export const bomItems = pgTable("bom_items", {
@@ -178,6 +181,14 @@ export const stageRunsRelations = relations(stageRuns, ({ one }) => ({
     fields: [stageRuns.orchestratorRunId],
     references: [orchestratorRuns.id],
   }),
+  pipelineRun: one(pipelineRuns, {
+    fields: [stageRuns.pipelineRunId],
+    references: [pipelineRuns.id],
+  }),
+  stageDefinition: one(stageDefinitions, {
+    fields: [stageRuns.stageDefinitionId],
+    references: [stageDefinitions.id],
+  }),
 }));
 
 export const bomItemsRelations = relations(bomItems, ({ one }) => ({
@@ -201,6 +212,7 @@ export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
 
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -257,6 +269,119 @@ export const insertOrchestratorRunSchema = createInsertSchema(orchestratorRuns).
   context: true,
 });
 
+// Enhanced modular pipeline schemas
+export const pipelineTemplates = pgTable("pipeline_templates", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category").notNull(), // hardware_design, firmware_dev, validation, custom
+  version: text("version").default("1.0.0").notNull(),
+  isPublic: boolean("is_public").default(false).notNull(),
+  userId: uuid("user_id").references(() => users.id),
+  metadata: jsonb("metadata").default({}), // tags, difficulty, estimated_time, etc.
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const stageDefinitions = pgTable("stage_definitions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateId: uuid("template_id").notNull().references(() => pipelineTemplates.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  displayName: text("display_name").notNull(),
+  description: text("description"),
+  category: text("category").notNull(), // ai_generation, validation, export, user_input
+  order: integer("order").notNull(),
+  isOptional: boolean("is_optional").default(false).notNull(),
+  isParallel: boolean("is_parallel").default(false).notNull(),
+  estimatedDuration: integer("estimated_duration"), // in seconds
+  dependencies: text("dependencies").array().default([]), // stage names this depends on
+  configuration: jsonb("configuration").default({}), // stage-specific config
+  inputSchema: jsonb("input_schema").default({}), // JSON schema for expected inputs
+  outputSchema: jsonb("output_schema").default({}), // JSON schema for expected outputs
+  retryPolicy: jsonb("retry_policy").default({}), // max_attempts, backoff_strategy
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  // Ensure unique stage names within each template
+  uniqueTemplateName: sql`UNIQUE(${table.templateId}, ${table.name})`,
+  // Ensure unique stage order within each template  
+  uniqueTemplateOrder: sql`UNIQUE(${table.templateId}, ${table.order})`,
+}));
+
+export const pipelineRuns = pgTable("pipeline_runs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  orchestratorRunId: uuid("orchestrator_run_id").notNull().references(() => orchestratorRuns.id, { onDelete: "cascade" }),
+  templateId: uuid("template_id").notNull().references(() => pipelineTemplates.id),
+  status: text("status").notNull(), // pending, running, paused, completed, error, cancelled
+  currentStageOrder: integer("current_stage_order").default(0),
+  parallelStages: text("parallel_stages").array().default([]), // stages running in parallel
+  configuration: jsonb("configuration").default({}), // runtime pipeline config
+  metrics: jsonb("metrics").default({}), // execution metrics
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+// Enhanced pipeline relations
+export const pipelineTemplatesRelations = relations(pipelineTemplates, ({ one, many }) => ({
+  user: one(users, {
+    fields: [pipelineTemplates.userId],
+    references: [users.id],
+  }),
+  stageDefinitions: many(stageDefinitions),
+  pipelineRuns: many(pipelineRuns),
+}));
+
+export const stageDefinitionsRelations = relations(stageDefinitions, ({ one }) => ({
+  template: one(pipelineTemplates, {
+    fields: [stageDefinitions.templateId],
+    references: [pipelineTemplates.id],
+  }),
+}));
+
+export const pipelineRunsRelations = relations(pipelineRuns, ({ one }) => ({
+  orchestratorRun: one(orchestratorRuns, {
+    fields: [pipelineRuns.orchestratorRunId],
+    references: [orchestratorRuns.id],
+  }),
+  template: one(pipelineTemplates, {
+    fields: [pipelineRuns.templateId],
+    references: [pipelineTemplates.id],
+  }),
+}));
+
+export const insertPipelineTemplateSchema = createInsertSchema(pipelineTemplates).pick({
+  name: true,
+  description: true,
+  category: true,
+  version: true,
+  isPublic: true,
+  userId: true,
+  metadata: true,
+});
+
+export const insertStageDefinitionSchema = createInsertSchema(stageDefinitions).pick({
+  templateId: true,
+  name: true,
+  displayName: true,
+  description: true,
+  category: true,
+  order: true,
+  isOptional: true,
+  isParallel: true,
+  estimatedDuration: true,
+  dependencies: true,
+  configuration: true,
+  inputSchema: true,
+  outputSchema: true,
+  retryPolicy: true,
+});
+
+export const insertPipelineRunSchema = createInsertSchema(pipelineRuns).pick({
+  orchestratorRunId: true,
+  templateId: true,
+  status: true,
+  configuration: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -273,3 +398,11 @@ export type OrchestratorRun = typeof orchestratorRuns.$inferSelect;
 export type StageRun = typeof stageRuns.$inferSelect;
 export type BomItem = typeof bomItems.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+
+// Enhanced pipeline types
+export type InsertPipelineTemplate = z.infer<typeof insertPipelineTemplateSchema>;
+export type PipelineTemplate = typeof pipelineTemplates.$inferSelect;
+export type InsertStageDefinition = z.infer<typeof insertStageDefinitionSchema>;
+export type StageDefinition = typeof stageDefinitions.$inferSelect;
+export type InsertPipelineRun = z.infer<typeof insertPipelineRunSchema>;
+export type PipelineRun = typeof pipelineRuns.$inferSelect;
