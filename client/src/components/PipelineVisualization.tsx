@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { ArrowDown, ArrowRight, GitBranch, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 import PipelineStage, { type StageDefinition, type StageRun } from "./PipelineStage";
+import PipelineProgressDashboard from "./PipelineProgressDashboard";
 import { cn } from "@/lib/utils";
 import type { PipelineTemplate as SchemaPipelineTemplate, PipelineRun as SchemaPipelineRun, StageDefinition as SchemaStageDefinition } from "@shared/schema";
 
@@ -237,66 +238,77 @@ export default function PipelineVisualization({
           <CardTitle className="text-base">Pipeline Stages</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[400px] pr-4">
-            <div className={cn(
-              "space-y-4",
-              layout === 'horizontal' && "flex space-x-4 space-y-0 overflow-x-auto pb-2"
-            )}>
-              {parallelGroups.map((group, groupIndex) => (
-                <div key={groupIndex} className="relative">
-                  {/* Parallel Group Container */}
-                  {group.length > 1 ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                        <GitBranch className="w-4 h-4" />
-                        <span>Parallel Execution</span>
+          {/* Enhanced Progress Dashboard Mode */}
+          {run && showMetrics ? (
+            <PipelineProgressDashboard
+              template={template}
+              run={run}
+              stageRuns={stageRuns}
+              onStageAction={onStageAction}
+              onStageClick={onStageClick}
+            />
+          ) : (
+            <ScrollArea className="h-[400px] pr-4">
+              <div className={cn(
+                "space-y-4",
+                layout === 'horizontal' && "flex space-x-4 space-y-0 overflow-x-auto pb-2"
+              )}>
+                {parallelGroups.map((group, groupIndex) => (
+                  <div key={groupIndex} className="relative">
+                    {/* Parallel Group Container */}
+                    {group.length > 1 ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                          <GitBranch className="w-4 h-4" />
+                          <span>Parallel Execution</span>
+                        </div>
+                        <div className={cn(
+                          "grid gap-3",
+                          group.length === 2 && "grid-cols-2",
+                          group.length === 3 && "grid-cols-3",
+                          group.length > 3 && "grid-cols-2"
+                        )}>
+                          {group.map((stage) => (
+                            <PipelineStage
+                              key={stage.id}
+                              definition={stage}
+                              run={stageRunsMap[stage.name]}
+                              isActive={(run?.currentStageOrder ?? 0) === stage.order}
+                              isConnected={Boolean(stageRunsMap[stage.name])}
+                              showDependencies={showDependencies}
+                              onStageClick={onStageClick}
+                              onActionClick={onStageAction}
+                            />
+                          ))}
+                        </div>
                       </div>
-                      <div className={cn(
-                        "grid gap-3",
-                        group.length === 2 && "grid-cols-2",
-                        group.length === 3 && "grid-cols-3",
-                        group.length > 3 && "grid-cols-2"
-                      )}>
-                        {group.map((stage) => (
-                          <PipelineStage
-                            key={stage.id}
-                            definition={stage}
-                            run={stageRunsMap[stage.name]}
-                            isActive={(run?.currentStageOrder ?? 0) === stage.order}
-                            isConnected={Boolean(stageRunsMap[stage.name])}
-                            showDependencies={showDependencies}
-                            onStageClick={onStageClick}
-                            onActionClick={onStageAction}
-                          />
-                        ))}
+                    ) : (
+                      <PipelineStage
+                        definition={group[0]}
+                        run={stageRunsMap[group[0].name]}
+                        isActive={(run?.currentStageOrder ?? 0) === group[0].order}
+                        isConnected={Boolean(stageRunsMap[group[0].name])}
+                        showDependencies={showDependencies}
+                        onStageClick={onStageClick}
+                        onActionClick={onStageAction}
+                      />
+                    )}
+                    
+                    {/* Connection Arrow */}
+                    {groupIndex < parallelGroups.length - 1 && (
+                      <div className="flex justify-center my-2">
+                        {layout === 'vertical' ? (
+                          <ArrowDown className="w-4 h-4 text-muted-foreground" />
+                        ) : (
+                          <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                        )}
                       </div>
-                    </div>
-                  ) : (
-                    <PipelineStage
-                      definition={group[0]}
-                      run={stageRunsMap[group[0].name]}
-                      isActive={(run?.currentStageOrder ?? 0) === group[0].order}
-                      isConnected={Boolean(stageRunsMap[group[0].name])}
-                      showDependencies={showDependencies}
-                      onStageClick={onStageClick}
-                      onActionClick={onStageAction}
-                    />
-                  )}
-                  
-                  {/* Connection Arrow */}
-                  {groupIndex < parallelGroups.length - 1 && (
-                    <div className="flex justify-center my-2">
-                      {layout === 'vertical' ? (
-                        <ArrowDown className="w-4 h-4 text-muted-foreground" />
-                      ) : (
-                        <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
         </CardContent>
       </Card>
 
