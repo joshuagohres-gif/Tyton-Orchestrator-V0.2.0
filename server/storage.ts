@@ -46,6 +46,7 @@ export interface IStorage {
 
   // Components
   getComponent(id: string): Promise<Component | undefined>;
+  getAllComponents(): Promise<Component[]>;
   searchComponents(query: string, category?: string): Promise<Component[]>;
   createComponent(component: InsertComponent): Promise<Component>;
 
@@ -185,6 +186,12 @@ export class DatabaseStorage implements IStorage {
     return this.withRetry(async () => {
       const [component] = await db.select().from(components).where(eq(components.id, id));
       return component || undefined;
+    });
+  }
+
+  async getAllComponents(): Promise<Component[]> {
+    return this.withRetry(async () => {
+      return await db.select().from(components).orderBy(desc(components.createdAt));
     });
   }
 

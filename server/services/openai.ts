@@ -697,6 +697,273 @@ endmodule`;
   }
 }
 
+// ===== CUSTOM MODULE DESIGNER =====
+
+export interface CustomModuleRequest {
+  name: string;
+  description: string;
+  category: string; // microcontroller, sensor, actuator, etc.
+  specifications: string; // User requirements for the module
+  pinCount?: number;
+  package?: string; // DIP, SMD, BGA, etc.
+  features?: string[]; // List of required features
+}
+
+export interface CustomModuleDesign {
+  name: string;
+  mpn: string;
+  manufacturer: string;
+  category: string;
+  description: string;
+  specifications: Record<string, any>;
+  pinout: Array<{
+    number: number;
+    name: string;
+    type: string; // power, ground, gpio, analog, etc.
+    description: string;
+  }>;
+  electricalCharacteristics: {
+    operatingVoltage: string;
+    currentConsumption: string;
+    powerDissipation: string;
+    temperature: { min: string; max: string; };
+  };
+  package: {
+    type: string;
+    dimensions: { width: string; height: string; depth?: string; };
+    pitch?: string;
+  };
+  edaSymbol?: string; // KiCad symbol data
+  edaFootprint?: string; // KiCad footprint data
+}
+
+export async function designCustomModule(request: CustomModuleRequest): Promise<CustomModuleDesign> {
+  const prompt = `Design a custom electronic module based on these requirements:
+
+Name: ${request.name}
+Description: ${request.description}
+Category: ${request.category}
+Specifications: ${request.specifications}
+${request.pinCount ? `Pin Count: ${request.pinCount}` : ''}
+${request.package ? `Package Type: ${request.package}` : ''}
+${request.features ? `Required Features: ${request.features.join(', ')}` : ''}
+
+Generate a complete module design including:
+1. Detailed specifications and electrical characteristics
+2. Complete pinout with pin numbers, names, types, and descriptions
+3. Package information with dimensions
+4. Operating parameters (voltage, current, temperature)
+5. Generate a realistic MPN (manufacturer part number)
+6. Suggest an appropriate manufacturer
+
+Return JSON format:
+{
+  "name": "Module Name",
+  "mpn": "CUSTOM-XXXX-YY",
+  "manufacturer": "Manufacturer Name",
+  "category": "category",
+  "description": "Detailed description",
+  "specifications": {
+    "feature1": "value1",
+    "feature2": "value2"
+  },
+  "pinout": [
+    {"number": 1, "name": "VCC", "type": "power", "description": "Power supply"}
+  ],
+  "electricalCharacteristics": {
+    "operatingVoltage": "3.3V",
+    "currentConsumption": "50mA",
+    "powerDissipation": "165mW",
+    "temperature": {"min": "-40°C", "max": "85°C"}
+  },
+  "package": {
+    "type": "DIP-8",
+    "dimensions": {"width": "7.62mm", "height": "9.8mm"},
+    "pitch": "2.54mm"
+  }
+}`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert electronic component designer. Create realistic, manufacturable custom modules with accurate specifications."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
+      max_completion_tokens: 2000
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    
+    // Generate EDA symbol and footprint if not provided
+    if (!result.edaSymbol) {
+      result.edaSymbol = generateKiCadSymbol(result);
+    }
+    if (!result.edaFootprint) {
+      result.edaFootprint = generateKiCadFootprint(result);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error("Custom module design failed:", error);
+    
+    // Return a basic fallback module
+    return {
+      name: request.name || "Custom Module",
+      mpn: `CUSTOM-${Date.now()}`,
+      manufacturer: "Generic",
+      category: request.category || "passive",
+      description: request.description || "Custom designed module",
+      specifications: {
+        type: request.category,
+        custom: true
+      },
+      pinout: [
+        { number: 1, name: "PIN1", type: "gpio", description: "General purpose I/O" },
+        { number: 2, name: "GND", type: "ground", description: "Ground" }
+      ],
+      electricalCharacteristics: {
+        operatingVoltage: "3.3V",
+        currentConsumption: "10mA",
+        powerDissipation: "33mW",
+        temperature: { min: "0°C", max: "70°C" }
+      },
+      package: {
+        type: request.package || "DIP",
+        dimensions: { width: "7.62mm", height: "10mm" },
+        pitch: "2.54mm"
+      },
+      edaSymbol: "",
+      edaFootprint: ""
+    };
+  }
+}
+
+// Generate KiCad symbol for custom module
+function generateKiCadSymbol(module: CustomModuleDesign): string {
+  const pinSpacing = 100; // 100 mils between pins
+  const boxWidth = Math.max(module.name.length * 50, module.pinout.length * 50);
+  const boxHeight = Math.ceil(module.pinout.length / 2) * pinSpacing + 200;
+  
+  let symbol = `(symbol "${module.mpn}" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)\n`;
+  symbol += `  (property "Reference" "U" (id 0) (at 0 ${boxHeight/2 + 100} 0)\n`;
+  symbol += `    (effects (font (size 1.27 1.27))))\n`;
+  symbol += `  (property "Value" "${module.name}" (id 1) (at 0 ${-boxHeight/2 - 100} 0)\n`;
+  symbol += `    (effects (font (size 1.27 1.27))))\n`;
+  symbol += `  (property "Footprint" "" (id 2) (at 0 0 0)\n`;
+  symbol += `    (effects (font (size 1.27 1.27)) hide))\n`;
+  
+  // Draw rectangle
+  symbol += `  (symbol "${module.mpn}_0_1"\n`;
+  symbol += `    (rectangle (start ${-boxWidth/2} ${boxHeight/2}) (end ${boxWidth/2} ${-boxHeight/2})\n`;
+  symbol += `      (stroke (width 0.254) (type default))\n`;
+  symbol += `      (fill (type background))\n`;
+  symbol += `    )\n`;
+  symbol += `  )\n`;
+  
+  // Add pins
+  symbol += `  (symbol "${module.mpn}_1_1"\n`;
+  
+  module.pinout.forEach((pin, index) => {
+    const side = index < module.pinout.length / 2 ? 'left' : 'right';
+    const yPos = side === 'left' 
+      ? boxHeight/2 - (index + 1) * pinSpacing
+      : boxHeight/2 - (index - Math.floor(module.pinout.length / 2) + 1) * pinSpacing;
+    const xPos = side === 'left' ? -boxWidth/2 - 200 : boxWidth/2 + 200;
+    
+    const pinType = pin.type === 'power' ? 'power_in' : 
+                   pin.type === 'ground' ? 'power_in' : 
+                   pin.type === 'output' ? 'output' : 'bidirectional';
+    
+    symbol += `    (pin ${pinType} line (at ${xPos} ${yPos} ${side === 'left' ? '0' : '180'}) (length 200)\n`;
+    symbol += `      (name "${pin.name}" (effects (font (size 1.27 1.27))))\n`;
+    symbol += `      (number "${pin.number}" (effects (font (size 1.27 1.27))))\n`;
+    symbol += `    )\n`;
+  });
+  
+  symbol += `  )\n`;
+  symbol += `)\n`;
+  
+  return symbol;
+}
+
+// Generate KiCad footprint for custom module
+function generateKiCadFootprint(module: CustomModuleDesign): string {
+  const pitch = parseFloat(module.package.pitch || "2.54");
+  const padSize = pitch * 0.6;
+  const drillSize = padSize * 0.6;
+  
+  let footprint = `(module "${module.mpn}" (layer F.Cu)\n`;
+  footprint += `  (descr "${module.description}")\n`;
+  footprint += `  (tags "${module.category} ${module.package.type}")\n`;
+  
+  // Add pads based on package type
+  if (module.package.type.includes('DIP')) {
+    const rows = 2;
+    const pinsPerRow = Math.ceil(module.pinout.length / rows);
+    
+    module.pinout.forEach((pin, index) => {
+      const row = index < pinsPerRow ? 0 : 1;
+      const col = row === 0 ? index : index - pinsPerRow;
+      const x = col * pitch;
+      const y = row * pitch * 3; // 3x pitch between rows for DIP
+      
+      footprint += `  (pad "${pin.number}" thru_hole circle (at ${x} ${y}) (size ${padSize} ${padSize}) (drill ${drillSize}) (layers *.Cu *.Mask))\n`;
+    });
+  } else if (module.package.type.includes('SMD') || module.package.type.includes('QFN')) {
+    // SMD pads
+    module.pinout.forEach((pin, index) => {
+      const side = Math.floor(index * 4 / module.pinout.length); // Which side (0-3)
+      const posOnSide = index % (module.pinout.length / 4);
+      
+      let x = 0, y = 0;
+      const packageWidth = parseFloat(module.package.dimensions.width) || 5;
+      const packageHeight = parseFloat(module.package.dimensions.height) || 5;
+      
+      switch(side) {
+        case 0: // Left
+          x = -packageWidth/2;
+          y = posOnSide * pitch - packageHeight/2;
+          break;
+        case 1: // Bottom
+          x = posOnSide * pitch - packageWidth/2;
+          y = packageHeight/2;
+          break;
+        case 2: // Right
+          x = packageWidth/2;
+          y = packageHeight/2 - posOnSide * pitch;
+          break;
+        case 3: // Top
+          x = packageWidth/2 - posOnSide * pitch;
+          y = -packageHeight/2;
+          break;
+      }
+      
+      footprint += `  (pad "${pin.number}" smd rect (at ${x} ${y}) (size ${padSize} ${padSize*0.5}) (layers F.Cu F.Paste F.Mask))\n`;
+    });
+  }
+  
+  // Add courtyard
+  const width = parseFloat(module.package.dimensions.width) || 10;
+  const height = parseFloat(module.package.dimensions.height) || 10;
+  footprint += `  (fp_line (start ${-width/2-1} ${-height/2-1}) (end ${width/2+1} ${-height/2-1}) (layer F.CrtYd) (width 0.05))\n`;
+  footprint += `  (fp_line (start ${width/2+1} ${-height/2-1}) (end ${width/2+1} ${height/2+1}) (layer F.CrtYd) (width 0.05))\n`;
+  footprint += `  (fp_line (start ${width/2+1} ${height/2+1}) (end ${-width/2-1} ${height/2+1}) (layer F.CrtYd) (width 0.05))\n`;
+  footprint += `  (fp_line (start ${-width/2-1} ${height/2+1}) (end ${-width/2-1} ${-height/2-1}) (layer F.CrtYd) (width 0.05))\n`;
+  
+  footprint += `)\n`;
+  
+  return footprint;
+}
+
 // ===== PHASE 2: CONSTRAINED CIRCUIT GENERATION =====
 
 export async function generateCircuit(request: CircuitGenerationRequest): Promise<CircuitGenerationResponse> {

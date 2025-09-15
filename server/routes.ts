@@ -3,8 +3,9 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { orchestrationEngine } from "./services/orchestration";
+import { designCustomModule } from "./services/openai";
 import { generateKiCadFiles, generateBOM } from "./services/eda";
-import { insertProjectSchema, insertProjectModuleSchema, insertProjectConnectionSchema } from "@shared/schema";
+import { insertProjectSchema, insertProjectModuleSchema, insertProjectConnectionSchema, type Component } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -322,6 +323,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const httpServer = createServer(app);
 
+  // Custom Module Designer API
+  app.post("/api/modules/design", async (req, res) => {
+    try {
+      const { name, description, category, specifications, pinCount, package: packageType, features } = req.body;
+      
+      if (!name || !category) {
+        return res.status(400).json({ error: "Name and category are required" });
+      }
+      
+      // Design the custom module using AI
+      const moduleDesign = await designCustomModule({
+        name,
+        description: description || "",
+        category,
+        specifications: specifications || "",
+        pinCount,
+        package: packageType,
+        features
+      });
+      
+      // Create the component in the database
+      const component = await storage.createComponent({
+        mpn: moduleDesign.mpn,
+        manufacturer: moduleDesign.manufacturer,
+        category: moduleDesign.category as any,
+        name: moduleDesign.name,
+        description: moduleDesign.description,
+        specifications: {
+          ...moduleDesign.specifications,
+          pinout: moduleDesign.pinout,
+          electricalCharacteristics: moduleDesign.electricalCharacteristics,
+          package: moduleDesign.package,
+          edaSymbol: moduleDesign.edaSymbol,
+          edaFootprint: moduleDesign.edaFootprint,
+          customDesigned: true,
+          designedAt: new Date().toISOString()
+        }
+      });
+      
+      res.json({ 
+        success: true, 
+        component,
+        moduleDesign 
+      });
+    } catch (error) {
+      console.error("Custom module design error:", error);
+      res.status(500).json({ 
+        error: "Failed to design custom module",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+  
+  // Get custom modules for a project or user
+  app.get("/api/modules/custom", async (req, res) => {
+    try {
+      // Get all components that are custom designed
+      const components = await storage.getAllComponents();
+      const customModules = components.filter((c: Component) => 
+        c.specifications && 
+        typeof c.specifications === 'object' &&
+        (c.specifications as any).customDesigned === true
+      );
+      
+      res.json(customModules);
+    } catch (error) {
+      console.error("Error fetching custom modules:", error);
+      res.status(500).json({ error: "Failed to fetch custom modules" });
+    }
+  });
+  
   // WebSocket Server for Real-time Collaboration
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
