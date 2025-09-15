@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ReactFlow, Node, Edge, addEdge, useNodesState, useEdgesState, Controls, Background, BackgroundVariant, ConnectionMode, Connection } from "@xyflow/react";
+import { ReactFlow, Node, Edge, addEdge, useNodesState, useEdgesState, useReactFlow, Controls, Background, BackgroundVariant, ConnectionMode, Connection } from "@xyflow/react";
+import { Button } from "@/components/ui/button";
+import { Grid3X3, MousePointer2, Crosshair, ZoomIn, ZoomOut, RotateCcw, RotateCw, Maximize } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ZoomIn, ZoomOut, RotateCcw, RotateCw, Maximize } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type { ProjectWithModules } from "@/types/project";
 
 interface ProjectCanvasProps {
@@ -89,8 +89,96 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [showCoordinates, setShowCoordinates] = useState(false);
+  const [enableSnapping, setEnableSnapping] = useState(true);
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
 
   const { sendMessage, lastMessage, connectionStatus } = useWebSocket();
+
+  // Grid snapping utility
+  const snapToGrid = useCallback((position: { x: number; y: number }, gridSize = 20): { x: number; y: number } => {
+    if (!enableSnapping) return position;
+    return {
+      x: Math.round(position.x / gridSize) * gridSize,
+      y: Math.round(position.y / gridSize) * gridSize,
+    };
+  }, [enableSnapping]);
+
+  // Adaptive Grid Component
+  const AdaptiveGrid = () => {
+    const reactFlowInstance = useReactFlow();
+    const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+
+    useEffect(() => {
+      // Update viewport when React Flow instance changes
+      const updateViewport = () => {
+        if (reactFlowInstance) {
+          const currentViewport = reactFlowInstance.getViewport();
+          setViewport(currentViewport);
+        }
+      };
+
+      updateViewport();
+      
+      // Set up interval to periodically update viewport for zoom changes
+      const interval = setInterval(updateViewport, 100);
+      
+      return () => clearInterval(interval);
+    }, [reactFlowInstance]);
+
+    // Calculate adaptive grid properties based on zoom level
+    const calculateGridProperties = () => {
+      const { zoom } = viewport;
+      
+      // Base grid (always visible)
+      const baseGap = Math.max(20, 80 / zoom);
+      const baseOpacity = Math.min(0.1, 0.05 * zoom);
+      
+      // Fine grid (visible at higher zoom levels)
+      const fineGap = Math.max(5, 20 / zoom);
+      const fineOpacity = zoom > 1.5 ? Math.min(0.05, 0.02 * zoom) : 0;
+      
+      // Coarse grid (visible at lower zoom levels)
+      const coarseGap = Math.max(40, 160 / zoom);
+      const coarseOpacity = zoom < 0.75 ? Math.min(0.08, 0.1 / zoom) : 0;
+
+      return { baseGap, baseOpacity, fineGap, fineOpacity, coarseGap, coarseOpacity };
+    };
+
+    const { baseGap, baseOpacity, fineGap, fineOpacity, coarseGap, coarseOpacity } = calculateGridProperties();
+
+    return (
+      <>
+        {/* Coarse grid for zoomed out view */}
+        {coarseOpacity > 0 && (
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={coarseGap}
+            size={2}
+            color={`rgba(255, 255, 255, ${coarseOpacity})`}
+          />
+        )}
+        
+        {/* Base grid - primary reference */}
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={baseGap}
+          size={1.5}
+          color={`rgba(255, 255, 255, ${baseOpacity})`}
+        />
+        
+        {/* Fine grid for detailed work */}
+        {fineOpacity > 0 && (
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={fineGap}
+            size={0.8}
+            color={`rgba(255, 255, 255, ${fineOpacity})`}
+          />
+        )}
+      </>
+    );
+  };
 
   // Convert project modules to React Flow nodes
   useEffect(() => {
@@ -191,17 +279,45 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
     [setEdges, createConnectionMutation, sendMessage, project.id]
   );
 
+  // Live snapping during drag
+  const onNodeDrag = useCallback(
+    (event: any, node: Node) => {
+      if (enableSnapping) {
+        const snappedPosition = snapToGrid(node.position);
+        // Update node position with snapped coordinates during drag
+        setNodes((nodes) =>
+          nodes.map((n) =>
+            n.id === node.id ? { ...n, position: snappedPosition } : n
+          )
+        );
+      }
+    },
+    [enableSnapping, snapToGrid, setNodes]
+  );
+
   const onNodeDragStop = useCallback(
     (event: any, node: Node) => {
-      // Broadcast node position update
+      // Apply final grid snapping
+      const snappedPosition = snapToGrid(node.position);
+      
+      // Update node position with snapped coordinates
+      if (snappedPosition.x !== node.position.x || snappedPosition.y !== node.position.y) {
+        setNodes((nodes) =>
+          nodes.map((n) =>
+            n.id === node.id ? { ...n, position: snappedPosition } : n
+          )
+        );
+      }
+
+      // Broadcast node position update with snapped coordinates
       sendMessage({
         type: 'canvas_update',
         action: 'node_moved',
-        data: { nodeId: node.id, position: node.position },
+        data: { nodeId: node.id, position: snappedPosition },
         projectId: project.id,
       });
     },
-    [sendMessage, project.id]
+    [sendMessage, project.id, snapToGrid, setNodes]
   );
 
   const onSelectionChange = useCallback(
@@ -210,6 +326,42 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
     },
     []
   );
+
+  // Real-time cursor tracking
+  const onMouseMove = useCallback(
+    (event: React.MouseEvent) => {
+      if (showCoordinates) {
+        const reactFlowBounds = event.currentTarget.getBoundingClientRect();
+        const position = {
+          x: event.clientX - reactFlowBounds.left,
+          y: event.clientY - reactFlowBounds.top,
+        };
+        setCursorPosition(position);
+      }
+    },
+    [showCoordinates]
+  );
+
+  // Control functions - will be implemented after ReactFlow is rendered
+  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+
+  const handleZoomIn = useCallback(() => {
+    if (reactFlowInstance) {
+      reactFlowInstance.zoomIn();
+    }
+  }, [reactFlowInstance]);
+
+  const handleZoomOut = useCallback(() => {
+    if (reactFlowInstance) {
+      reactFlowInstance.zoomOut();
+    }
+  }, [reactFlowInstance]);
+
+  const handleFitView = useCallback(() => {
+    if (reactFlowInstance) {
+      reactFlowInstance.fitView();
+    }
+  }, [reactFlowInstance]);
 
   // Handle drag over to allow dropping
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -383,13 +535,18 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onSelectionChange={onSelectionChange}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        onMouseMove={onMouseMove}
+        onInit={setReactFlowInstance}
         nodeTypes={nodeTypes}
         connectionMode={ConnectionMode.Loose}
         fitView
+        snapToGrid={enableSnapping}
+        snapGrid={[20, 20]}
         className="bg-background"
         data-testid="react-flow-canvas"
       >
@@ -397,13 +554,50 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
           className="bg-card border-border [&>button]:bg-card [&>button]:border-border [&>button]:text-foreground hover:[&>button]:bg-secondary"
           position="bottom-right"
         />
-        <Background 
-          variant={BackgroundVariant.Dots} 
-          gap={20} 
-          color="rgba(255, 255, 255, 0.03)"
-          className="opacity-50"
-        />
+        <AdaptiveGrid />
       </ReactFlow>
+
+      {/* Grid Controls Panel */}
+      <div className="absolute top-4 right-4 z-40">
+        <div className="bg-card/90 backdrop-blur-sm border border-border rounded-lg p-2">
+          <div className="flex flex-col space-y-2">
+            <Button
+              variant={enableSnapping ? "default" : "outline"}
+              size="sm"
+              onClick={() => setEnableSnapping(!enableSnapping)}
+              className="h-8 px-2"
+              data-testid="button-toggle-snap"
+            >
+              <Grid3X3 className="h-4 w-4 mr-1" />
+              Snap
+            </Button>
+            <Button
+              variant={showCoordinates ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowCoordinates(!showCoordinates)}
+              className="h-8 px-2"
+              data-testid="button-toggle-coordinates"
+            >
+              <Crosshair className="h-4 w-4 mr-1" />
+              XY
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Coordinate Display */}
+      {showCoordinates && (
+        <div className="absolute top-4 left-4 z-40">
+          <div className="bg-card/90 backdrop-blur-sm border border-border rounded-lg px-3 py-2">
+            <div className="text-xs text-muted-foreground font-mono" data-testid="text-coordinates">
+              {selectedNode 
+                ? `Node: (${selectedNode.position.x.toFixed(0)}, ${selectedNode.position.y.toFixed(0)})`
+                : `Cursor: (${cursorPosition.x.toFixed(0)}, ${cursorPosition.y.toFixed(0)})`
+              }
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Real-time Collaboration Indicators */}
       <div className="absolute bottom-4 left-4 z-40">
