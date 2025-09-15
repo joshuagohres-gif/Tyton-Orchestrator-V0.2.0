@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+// Using the latest available OpenAI model
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "" 
 });
@@ -147,6 +147,10 @@ export interface CircuitGenerationResponse {
   }[];
   firmwareCode: string;
   explanation: string;
+  powerRequirements?: {
+    totalPower: string;
+    voltageRails: string[];
+  };
 }
 
 // ===== PHASE 1: GUIDE SHEET GENERATION =====
@@ -231,7 +235,7 @@ Focus on creating practical, manufacturable constraints that will guide the circ
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -578,7 +582,7 @@ Return JSON format:
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -785,7 +789,7 @@ Return JSON format:
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -1069,7 +1073,7 @@ Focus on:
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -1228,7 +1232,7 @@ Provide real, available components with manufacturer part numbers. Response in J
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
@@ -1403,7 +1407,7 @@ Return JSON format:
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
