@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import { generateCircuit, validateCircuit, generateGuideSheet } from "./openai";
+import { generateCircuit, validateCircuit, generateGuideSheet, validateCircuitAgainstGuideSheet } from "./openai";
 import { generateKiCadFiles, generateSchematic, generateBOM } from "./eda";
 
 export interface OrchestrationContext {

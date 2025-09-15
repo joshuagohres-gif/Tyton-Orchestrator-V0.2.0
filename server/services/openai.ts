@@ -340,6 +340,7 @@ Focus on creating practical, manufacturable constraints that will guide the circ
   }
 }
 
+
 // ===== PHASE 2: CONSTRAINED CIRCUIT GENERATION =====
 
 export async function generateCircuit(request: CircuitGenerationRequest): Promise<CircuitGenerationResponse> {
@@ -463,12 +464,46 @@ Focus on:
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
     
-    // Validate and ensure proper structure
+    // Parse with Zod schema for proper validation
+    const parseResult = CircuitDesignSchema.safeParse(result);
+    
+    if (!parseResult.success) {
+      console.warn("Circuit design validation issues:", parseResult.error.issues);
+      
+      // Attempt to fix common issues
+      const fixedResult: CircuitGenerationResponse = {
+        components: Array.isArray(result.components) ? result.components : [],
+        connections: Array.isArray(result.connections) ? result.connections : [],
+        firmwareCode: result.firmwareCode || "",
+        explanation: result.explanation || "No explanation provided",
+        powerRequirements: result.powerRequirements || {
+          totalPower: "0W",
+          voltageRails: ["3.3V"]
+        }
+      };
+      
+      // Re-validate after fixes
+      const secondParse = CircuitDesignSchema.safeParse(fixedResult);
+      if (secondParse.success) {
+        return secondParse.data;
+      }
+      
+      // If still invalid, use validated fallback
+      console.warn("Using validated fallback circuit design");
+    } else {
+      return parseResult.data;
+    }
+    
+    // Validated fallback structure
     const validatedResult: CircuitGenerationResponse = {
       components: Array.isArray(result.components) ? result.components : [],
       connections: Array.isArray(result.connections) ? result.connections : [],
       firmwareCode: result.firmwareCode || "",
-      explanation: result.explanation || "No explanation provided"
+      explanation: result.explanation || "No explanation provided",
+      powerRequirements: {
+        totalPower: "0W",
+        voltageRails: ["3.3V"]
+      }
     };
 
     // Ensure each component has required fields
@@ -593,10 +628,139 @@ Provide real, available components with manufacturer part numbers. Response in J
   }
 }
 
-export async function validateCircuit(circuitData: any): Promise<{ isValid: boolean; issues: string[]; suggestions: string[] }> {
+// Validate circuit against guide sheet constraints
+export function validateCircuitAgainstGuideSheet(
+  circuit: CircuitGenerationResponse,
+  guideSheet: GuideSheet
+): { isValid: boolean; violations: string[]; warnings: string[] } {
+  const violations: string[] = [];
+  const warnings: string[] = [];
+  
+  // Check component types against allowed types
+  const componentCategories = new Map<string, number>();
+  for (const component of circuit.components) {
+    const category = component.type;
+    componentCategories.set(category, (componentCategories.get(category) || 0) + 1);
+    
+    // Find matching requirement
+    const requirement = guideSheet.componentRequirements.find(r => r.category === category);
+    if (requirement) {
+      // Check if component type is allowed
+      if (requirement.allowedTypes && requirement.allowedTypes.length > 0) {
+        const isAllowed = requirement.allowedTypes.some(allowed => 
+          component.label?.toLowerCase().includes(allowed.toLowerCase()) ||
+          component.mpn?.toLowerCase().includes(allowed.toLowerCase())
+        );
+        if (!isAllowed) {
+          violations.push(`Component '${component.label}' is not in allowed types for ${category}: ${requirement.allowedTypes.join(', ')}`);
+        }
+      }
+    }
+  }
+  
+  // Check component counts
+  for (const requirement of guideSheet.componentRequirements) {
+    const count = componentCategories.get(requirement.category) || 0;
+    if (requirement.required && count === 0) {
+      violations.push(`Required component category '${requirement.category}' is missing`);
+    }
+    if (requirement.count) {
+      if (count < requirement.count.min) {
+        violations.push(`Too few ${requirement.category} components: ${count} < ${requirement.count.min}`);
+      }
+      if (count > requirement.count.max) {
+        violations.push(`Too many ${requirement.category} components: ${count} > ${requirement.count.max}`);
+      }
+    }
+  }
+  
+  // Check electrical constraints
+  const electricalConstraints = guideSheet.electricalConstraints;
+  if (circuit.powerRequirements) {
+    // Parse total power
+    const totalPowerMatch = circuit.powerRequirements.totalPower?.match(/([\d.]+)/);
+    const totalPower = totalPowerMatch ? parseFloat(totalPowerMatch[1]) : 0;
+    
+    if (totalPower > electricalConstraints.powerBudget) {
+      violations.push(`Power budget exceeded: ${totalPower}W > ${electricalConstraints.powerBudget}W`);
+    }
+  }
+  
+  // Check voltage rails
+  if (circuit.powerRequirements?.voltageRails) {
+    for (const railStr of circuit.powerRequirements.voltageRails) {
+      const voltageMatch = railStr.match(/([\d.]+)/);
+      const voltage = voltageMatch ? parseFloat(voltageMatch[1]) : 0;
+      
+      if (voltage > electricalConstraints.maxVoltage) {
+        violations.push(`Voltage exceeds maximum: ${voltage}V > ${electricalConstraints.maxVoltage}V`);
+      }
+      
+      // Check if voltage rail is defined in guide sheet
+      const definedRail = electricalConstraints.voltageRails.find(r => 
+        Math.abs(r.voltage - voltage) <= (r.tolerance || 0.1)
+      );
+      if (!definedRail && voltage > 0) {
+        warnings.push(`Voltage rail ${voltage}V is not defined in guide sheet`);
+      }
+    }
+  }
+  
+  // Check design rules
+  for (const rule of guideSheet.designRules) {
+    if (rule.severity === "error") {
+      // Add specific checks based on rule category
+      if (rule.category === "electrical" && rule.rule.includes("3.3V logic")) {
+        // Check if any component uses different logic levels
+        const non33vComponents = circuit.components.filter(c => 
+          c.specifications?.voltage && 
+          !c.specifications.voltage.includes("3.3")
+        );
+        if (non33vComponents.length > 0) {
+          violations.push(`Design rule violation: ${rule.rule}. Found components with different voltages.`);
+        }
+      }
+    } else if (rule.severity === "warning") {
+      warnings.push(`Design rule warning: ${rule.rule}`);
+    }
+  }
+  
+  return {
+    isValid: violations.length === 0,
+    violations,
+    warnings
+  };
+}
+
+export async function validateCircuit(
+  circuitData: any,
+  guideSheet?: GuideSheet
+): Promise<{ isValid: boolean; issues: string[]; suggestions: string[] }> {
+  let guideSheetSection = "";
+  let localValidation = { isValid: true, violations: [] as string[], warnings: [] as string[] };
+  
+  if (guideSheet) {
+    // Perform local validation against guide sheet
+    localValidation = validateCircuitAgainstGuideSheet(circuitData, guideSheet);
+    
+    guideSheetSection = `
+
+GUIDE SHEET CONSTRAINTS:
+${JSON.stringify(guideSheet, null, 2)}
+
+GUIDE SHEET VIOLATIONS FOUND:
+${localValidation.violations.length > 0 ? localValidation.violations.join('\n') : 'None'}
+
+GUIDE SHEET WARNINGS:
+${localValidation.warnings.length > 0 ? localValidation.warnings.join('\n') : 'None'}
+
+Please also check if the circuit adheres to ALL guide sheet constraints.`;
+  }
+  
   const prompt = `Validate this hardware circuit design and identify any issues:
 
 Circuit Data: ${JSON.stringify(circuitData, null, 2)}
+${guideSheetSection}
 
 Analyze for:
 1. Power supply adequacy
@@ -605,6 +769,7 @@ Analyze for:
 4. Missing connections
 5. Component availability
 6. Design rule violations
+${guideSheet ? '7. Guide sheet compliance' : ''}
 
 Return JSON format:
 {
