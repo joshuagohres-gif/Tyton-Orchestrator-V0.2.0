@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import { generateCircuit, validateCircuit } from "./openai";
+import { generateCircuit, validateCircuit, generateGuideSheet } from "./openai";
 import { generateKiCadFiles, generateSchematic, generateBOM } from "./eda";
 
 export interface OrchestrationContext {
@@ -508,7 +508,47 @@ export class OrchestrationEngine {
 
     const context = orchestratorRun.context as any;
     
-    // Generate circuit using AI with retry logic
+    // ===== PHASE 1: Generate Guide Sheet =====
+    let guideSheet = null;
+    let guideAttempts = 0;
+    const maxGuideAttempts = 2;
+    
+    this.broadcastUpdate(orchestratorRunId, "planning", 15, "Generating design constraints and guide sheet...");
+    
+    while (!guideSheet && guideAttempts < maxGuideAttempts) {
+      guideAttempts++;
+      try {
+        guideSheet = await generateGuideSheet(
+          context.userBrief || "Create a basic IoT device",
+          context.projectTitle || "IoT Project"
+        );
+        
+        if (!guideSheet) {
+          console.warn(`Invalid guide sheet on attempt ${guideAttempts}, retrying...`);
+          guideSheet = null;
+          if (guideAttempts < maxGuideAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 1500 * guideAttempts));
+          }
+        }
+      } catch (error) {
+        console.error(`Guide sheet generation failed on attempt ${guideAttempts}:`, error);
+        // Continue without guide sheet if generation fails
+      }
+    }
+    
+    // Store guide sheet in context for visibility
+    if (guideSheet) {
+      await storage.updateOrchestratorRun(orchestratorRunId, {
+        progress: 20,
+        context: {
+          ...context,
+          guideSheet
+        }
+      });
+      this.broadcastUpdate(orchestratorRunId, "planning", 20, "Guide sheet generated, generating circuit design...");
+    }
+    
+    // ===== PHASE 2: Generate Circuit with Guide Sheet Constraints =====
     let circuitDesign = null;
     let attempts = 0;
     const maxAttempts = 3;
@@ -518,7 +558,8 @@ export class OrchestrationEngine {
       try {
         circuitDesign = await generateCircuit({
           userBrief: context.userBrief || "Create a basic IoT device",
-          projectTitle: context.projectTitle || "IoT Project"
+          projectTitle: context.projectTitle || "IoT Project",
+          guideSheet: guideSheet || undefined // Pass guide sheet if available
         });
         
         // Validate the circuit design
