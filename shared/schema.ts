@@ -115,6 +115,30 @@ export const auditLogs = pgTable("audit_logs", {
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
+// Collaboration Tables
+export const userPresence = pgTable("user_presence", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("active"), // active, away, editing
+  cursorPosition: jsonb("cursor_position"), // { x: number, y: number }
+  selectedNodeId: text("selected_node_id"), // Currently selected node
+  connectionId: text("connection_id").notNull(), // WebSocket connection ID
+  lastActivity: timestamp("last_activity").defaultNow().notNull(),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+});
+
+export const collaborationSessions = pgTable("collaboration_sessions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  initiatorUserId: uuid("initiator_user_id").notNull().references(() => users.id),
+  sessionMode: text("session_mode").notNull().default("live"), // live, review, presentation
+  isActive: boolean("is_active").notNull().default(true),
+  settings: jsonb("settings").default({}), // { allowEditing: boolean, showCursors: boolean }
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  endedAt: timestamp("ended_at"),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
