@@ -197,11 +197,17 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
 
   // Convert project connections to React Flow edges
   useEffect(() => {
-    if (project.connections) {
+    if (project.connections && project.modules) {
+      // Create a mapping from database module.id to module.nodeId for edge rendering
+      const moduleIdToNodeId = new Map<string, string>();
+      project.modules.forEach((module) => {
+        moduleIdToNodeId.set(module.id, module.nodeId);
+      });
+
       const flowEdges: Edge[] = project.connections.map((connection) => ({
         id: connection.edgeId,
-        source: connection.fromModuleId,
-        target: connection.toModuleId,
+        source: moduleIdToNodeId.get(connection.fromModuleId) || connection.fromModuleId,
+        target: moduleIdToNodeId.get(connection.toModuleId) || connection.toModuleId,
         sourceHandle: connection.fromPort,
         targetHandle: connection.toPort,
         type: 'smoothstep',
@@ -213,7 +219,7 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
       }));
       setEdges(flowEdges);
     }
-  }, [project.connections, setEdges]);
+  }, [project.connections, project.modules, setEdges]);
 
   const createModuleMutation = useMutation({
     mutationFn: async (moduleData: any) => {
@@ -239,6 +245,18 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
         toPort: connection.targetHandle,
         connectionType: 'data', // Would be determined by port types
         edgeId: `edge-${Date.now()}`,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id] });
+    },
+  });
+
+  const updateModulePositionMutation = useMutation({
+    mutationFn: async ({ moduleId, position }: { moduleId: string; position: { x: number; y: number } }) => {
+      const response = await apiRequest("PUT", `/api/projects/${project.id}/modules/${moduleId}`, {
+        position,
       });
       return response.json();
     },
@@ -273,7 +291,15 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
 
   const onNodeDragStop = useCallback(
     (event: any, node: Node) => {
-      // Let React Flow handle snapping, just broadcast the final position
+      // Persist position to database
+      if (node.data.moduleId && typeof node.data.moduleId === 'string') {
+        updateModulePositionMutation.mutate({
+          moduleId: node.data.moduleId,
+          position: node.position,
+        });
+      }
+
+      // Broadcast the final position to other users
       sendMessage({
         type: 'canvas_update',
         action: 'node_moved',
@@ -281,7 +307,7 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
         projectId: project.id,
       });
     },
-    [sendMessage, project.id]
+    [updateModulePositionMutation, sendMessage, project.id]
   );
 
   const onSelectionChange = useCallback(
@@ -357,7 +383,7 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
             { id: '3v3', label: '3.3V', type: 'power', direction: 'output' },
             { id: 'gnd', label: 'GND', type: 'power', direction: 'output' },
           ],
-          moduleId: newNodeId,
+          moduleId: newNodeId, // Will be updated after creation
           componentId: draggedComponent.id,
         },
       };
