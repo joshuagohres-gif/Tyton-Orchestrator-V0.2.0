@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Microchip, Plus, Clock, User, Trash2 } from "lucide-react";
+import AppHeader from "@/components/AppHeader";
 import type { Project } from "@shared/schema";
 
 export default function Home() {
@@ -127,71 +128,59 @@ export default function Home() {
       <div className="shooting-star shooting-star-3"></div>
       
       {/* Header */}
-      <header className="bg-card border-b border-border px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-              <Microchip className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Tyton Orchestrator</h1>
-              <p className="text-sm text-muted-foreground">AI-Powered Hardware Design Platform</p>
-            </div>
-          </div>
-          
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground glow-gold" data-testid="button-create-project">
-                <Plus className="w-4 h-4 mr-2" />
-                New Project
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] bg-card border-border">
-              <DialogHeader>
-                <DialogTitle className="text-foreground">Create New Project</DialogTitle>
-                <DialogDescription className="text-muted-foreground">
-                  Start a new hardware design project with AI assistance.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="title" className="text-foreground">Project Title</Label>
-                  <Input
-                    id="title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="e.g., Smart Home Sensor Network"
-                    className="bg-input border-border text-foreground"
-                    data-testid="input-project-title"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description" className="text-foreground">Description (Optional)</Label>
-                  <Textarea
-                    id="description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Describe your hardware project..."
-                    className="bg-input border-border text-foreground resize-none"
-                    rows={3}
-                    data-testid="input-project-description"
-                  />
-                </div>
+      <AppHeader>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-primary hover:bg-primary/90 text-primary-foreground glow-gold" data-testid="button-create-project">
+              <Plus className="w-4 h-4 mr-2" />
+              New Project
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px] bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="text-foreground">Create New Project</DialogTitle>
+              <DialogDescription className="text-muted-foreground">
+                Start a new hardware design project with AI assistance.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="title" className="text-foreground">Project Title</Label>
+                <Input
+                  id="title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g., Smart Home Sensor Network"
+                  className="bg-input border-border text-foreground"
+                  data-testid="input-project-title"
+                />
               </div>
-              <DialogFooter>
-                <Button
-                  onClick={handleCreateProject}
-                  disabled={!title.trim() || createProjectMutation.isPending}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground"
-                  data-testid="button-create-confirm"
-                >
-                  {createProjectMutation.isPending ? "Creating..." : "Create Project"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </header>
+              <div className="grid gap-2">
+                <Label htmlFor="description" className="text-foreground">Description (Optional)</Label>
+                <Textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe your hardware project..."
+                  className="bg-input border-border text-foreground resize-none"
+                  rows={3}
+                  data-testid="input-project-description"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={handleCreateProject}
+                disabled={!title.trim() || createProjectMutation.isPending}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+                data-testid="button-create-confirm"
+              >
+                {createProjectMutation.isPending ? "Creating..." : "Create Project"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </AppHeader>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
