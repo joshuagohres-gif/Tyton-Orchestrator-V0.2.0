@@ -43,7 +43,10 @@ function HardwareModuleNode({ data, selected }: { data: any; selected: boolean }
   };
 
   return (
-    <div className={`node rounded-lg p-4 w-48 ${selected ? 'ring-2 ring-primary' : ''}`}>
+    <div 
+      className={`node rounded-lg p-4 w-48 ${selected ? 'ring-2 ring-primary' : ''}`}
+      data-testid={`canvas-node-${data.moduleId || data.componentId || 'unknown'}`}
+    >
       <div className="flex items-center space-x-3 mb-3">
         <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
           <span className="text-primary text-sm">{getComponentIcon(data.category)}</span>
@@ -95,7 +98,10 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
 
   const { sendMessage, lastMessage, connectionStatus } = useWebSocket();
 
-  // Grid snapping utility
+  // Control functions - React Flow instance state
+  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+
+  // Grid snapping utility (kept for potential future use)
   const snapToGrid = useCallback((position: { x: number; y: number }, gridSize = 20): { x: number; y: number } => {
     if (!enableSnapping) return position;
     return {
@@ -104,31 +110,15 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
     };
   }, [enableSnapping]);
 
-  // Adaptive Grid Component
+  // Viewport state for adaptive grid (lifted to parent)
+  const [adaptiveViewport, setAdaptiveViewport] = useState({ x: 0, y: 0, zoom: 1 });
+
+  // Adaptive Grid Component with reactive viewport tracking
   const AdaptiveGrid = () => {
-    const reactFlowInstance = useReactFlow();
-    const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
-
-    useEffect(() => {
-      // Update viewport when React Flow instance changes
-      const updateViewport = () => {
-        if (reactFlowInstance) {
-          const currentViewport = reactFlowInstance.getViewport();
-          setViewport(currentViewport);
-        }
-      };
-
-      updateViewport();
-      
-      // Set up interval to periodically update viewport for zoom changes
-      const interval = setInterval(updateViewport, 100);
-      
-      return () => clearInterval(interval);
-    }, [reactFlowInstance]);
 
     // Calculate adaptive grid properties based on zoom level
     const calculateGridProperties = () => {
-      const { zoom } = viewport;
+      const { zoom } = adaptiveViewport;
       
       // Base grid (always visible)
       const baseGap = Math.max(20, 80 / zoom);
@@ -279,45 +269,19 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
     [setEdges, createConnectionMutation, sendMessage, project.id]
   );
 
-  // Live snapping during drag
-  const onNodeDrag = useCallback(
-    (event: any, node: Node) => {
-      if (enableSnapping) {
-        const snappedPosition = snapToGrid(node.position);
-        // Update node position with snapped coordinates during drag
-        setNodes((nodes) =>
-          nodes.map((n) =>
-            n.id === node.id ? { ...n, position: snappedPosition } : n
-          )
-        );
-      }
-    },
-    [enableSnapping, snapToGrid, setNodes]
-  );
+  // Remove custom drag snapping to avoid redundancy with React Flow's built-in snapping
 
   const onNodeDragStop = useCallback(
     (event: any, node: Node) => {
-      // Apply final grid snapping
-      const snappedPosition = snapToGrid(node.position);
-      
-      // Update node position with snapped coordinates
-      if (snappedPosition.x !== node.position.x || snappedPosition.y !== node.position.y) {
-        setNodes((nodes) =>
-          nodes.map((n) =>
-            n.id === node.id ? { ...n, position: snappedPosition } : n
-          )
-        );
-      }
-
-      // Broadcast node position update with snapped coordinates
+      // Let React Flow handle snapping, just broadcast the final position
       sendMessage({
         type: 'canvas_update',
         action: 'node_moved',
-        data: { nodeId: node.id, position: snappedPosition },
+        data: { nodeId: node.id, position: node.position },
         projectId: project.id,
       });
     },
-    [sendMessage, project.id, snapToGrid, setNodes]
+    [sendMessage, project.id]
   );
 
   const onSelectionChange = useCallback(
@@ -327,39 +291,28 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
     []
   );
 
-  // Real-time cursor tracking
+  // Real-time cursor tracking with proper flow coordinate transformation
   const onMouseMove = useCallback(
     (event: React.MouseEvent) => {
-      if (showCoordinates) {
+      if (showCoordinates && reactFlowInstance) {
         const reactFlowBounds = event.currentTarget.getBoundingClientRect();
-        const position = {
+        const clientPosition = {
           x: event.clientX - reactFlowBounds.left,
           y: event.clientY - reactFlowBounds.top,
         };
-        setCursorPosition(position);
+        // Convert client coordinates to flow coordinates
+        const flowPosition = reactFlowInstance.project(clientPosition);
+        setCursorPosition(flowPosition);
       }
     },
-    [showCoordinates]
+    [showCoordinates, reactFlowInstance]
   );
 
-  // Control functions - will be implemented after ReactFlow is rendered
-  const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
-
-  const handleZoomIn = useCallback(() => {
+  // Viewport change handler for adaptive grid
+  const onMove = useCallback(() => {
     if (reactFlowInstance) {
-      reactFlowInstance.zoomIn();
-    }
-  }, [reactFlowInstance]);
-
-  const handleZoomOut = useCallback(() => {
-    if (reactFlowInstance) {
-      reactFlowInstance.zoomOut();
-    }
-  }, [reactFlowInstance]);
-
-  const handleFitView = useCallback(() => {
-    if (reactFlowInstance) {
-      reactFlowInstance.fitView();
+      const currentViewport = reactFlowInstance.getViewport();
+      setAdaptiveViewport(currentViewport);
     }
   }, [reactFlowInstance]);
 
@@ -375,16 +328,19 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
       event.preventDefault();
       
       const draggedComponent = (window as any).draggedComponent;
-      if (!draggedComponent) return;
+      if (!draggedComponent || !reactFlowInstance) return;
 
-      // Get the canvas bounds to calculate position
+      // Get the canvas bounds and convert to flow coordinates
       const reactFlowBounds = (event.target as Element).closest('.react-flow')?.getBoundingClientRect();
       if (!reactFlowBounds) return;
-
-      const position = {
+      
+      const clientPosition = {
         x: event.clientX - reactFlowBounds.left,
         y: event.clientY - reactFlowBounds.top,
       };
+      
+      // Convert client coordinates to flow coordinates
+      const position = reactFlowInstance.project(clientPosition);
 
       const newNodeId = `node_${Date.now()}`;
       const newNode: Node = {
@@ -408,7 +364,7 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
 
       setNodes((nds) => nds.concat(newNode));
 
-      // Create project module in database
+      // Create project module in database with flow coordinates
       createModuleMutation.mutate({
         nodeId: newNodeId,
         label: draggedComponent.name,
@@ -470,6 +426,7 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
             size="sm" 
             className="p-2 hover:bg-secondary" 
             title="Zoom In"
+            onClick={() => reactFlowInstance?.zoomIn()}
             data-testid="button-zoom-in"
           >
             <ZoomIn className="w-4 h-4" />
@@ -479,6 +436,7 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
             size="sm" 
             className="p-2 hover:bg-secondary" 
             title="Zoom Out"
+            onClick={() => reactFlowInstance?.zoomOut()}
             data-testid="button-zoom-out"
           >
             <ZoomOut className="w-4 h-4" />
@@ -488,28 +446,10 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
             size="sm" 
             className="p-2 hover:bg-secondary" 
             title="Fit to View"
+            onClick={() => reactFlowInstance?.fitView()}
             data-testid="button-fit-view"
           >
             <Maximize className="w-4 h-4" />
-          </Button>
-          <div className="w-px bg-border my-1"></div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="p-2 hover:bg-secondary" 
-            title="Undo"
-            data-testid="button-undo"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="p-2 hover:bg-secondary" 
-            title="Redo"
-            data-testid="button-redo"
-          >
-            <RotateCw className="w-4 h-4" />
           </Button>
         </div>
         
@@ -535,12 +475,12 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onSelectionChange={onSelectionChange}
         onDrop={onDrop}
         onDragOver={onDragOver}
         onMouseMove={onMouseMove}
+        onMove={onMove}
         onInit={setReactFlowInstance}
         nodeTypes={nodeTypes}
         connectionMode={ConnectionMode.Loose}
