@@ -49,6 +49,8 @@ export const projectModules = pgTable("project_modules", {
   position: jsonb("position").notNull(), // { x: number, y: number }
   configuration: jsonb("configuration").default({}),
   firmwareCode: text("firmware_code"),
+  firmwareLanguage: text("firmware_language"), // cpp, c, python, verilog, vhdl
+  firmwarePlatform: text("firmware_platform"), // ESP32, Arduino, STM32, RP2040, etc.
   testingCode: text("testing_code"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -1,5 +1,12 @@
 import { storage } from "../storage";
-import { generateCircuit, validateCircuit, generateGuideSheet, validateCircuitAgainstGuideSheet } from "./openai";
+import { 
+  generateCircuit, 
+  validateCircuit, 
+  generateGuideSheet, 
+  validateCircuitAgainstGuideSheet,
+  detectProgrammableModule,
+  generateModuleFirmware 
+} from "./openai";
 import { generateKiCadFiles, generateSchematic, generateBOM } from "./eda";
 
 export interface OrchestrationContext {
@@ -562,12 +569,48 @@ export class OrchestrationEngine {
           guideSheet: guideSheet || undefined // Pass guide sheet if available
         });
         
-        // Validate the circuit design
+        // Validate the circuit design structure
         if (!circuitDesign || !Array.isArray(circuitDesign.components) || circuitDesign.components.length === 0) {
-          console.warn(`Invalid circuit design on attempt ${attempts}, retrying...`);
+          console.warn(`Invalid circuit design structure on attempt ${attempts}, retrying...`);
           circuitDesign = null;
           if (attempts < maxAttempts) {
             await new Promise(resolve => setTimeout(resolve, 2000 * attempts)); // Exponential backoff
+          }
+          continue;
+        }
+        
+        // Validate against guide sheet if available
+        if (guideSheet) {
+          const localValidation = validateCircuitAgainstGuideSheet(circuitDesign, guideSheet);
+          
+          if (!localValidation.isValid && attempts < maxAttempts) {
+            console.warn(`Circuit violates guide sheet constraints on attempt ${attempts}:`);
+            console.warn("Violations:", localValidation.violations);
+            
+            // Prepare enhanced prompt with violations
+            const violationPrompt = `${context.userBrief}\n\nPREVIOUS ATTEMPT VIOLATIONS:\n${localValidation.violations.join('\n')}\n\nPlease fix these violations and generate a compliant circuit.`;
+            
+            // Retry with violations feedback
+            circuitDesign = await generateCircuit({
+              userBrief: violationPrompt,
+              projectTitle: context.projectTitle || "IoT Project",
+              guideSheet: guideSheet
+            });
+            
+            // Re-validate after retry
+            const retryValidation = validateCircuitAgainstGuideSheet(circuitDesign, guideSheet);
+            if (!retryValidation.isValid) {
+              console.warn("Circuit still has violations after retry:", retryValidation.violations);
+              // Continue to next attempt or accept with warnings
+            } else {
+              console.log("Circuit now passes guide sheet validation");
+              break; // Success, exit loop
+            }
+          } else if (localValidation.isValid) {
+            console.log("Circuit passes guide sheet validation on attempt", attempts);
+            break; // Success
+          } else {
+            console.warn("Max attempts reached, accepting circuit with guide sheet violations:", localValidation.violations);
           }
         }
       } catch (error) {
@@ -667,6 +710,9 @@ export class OrchestrationEngine {
       }];
     }
 
+    // Track programmable modules for firmware generation
+    const programmableModules = [];
+    
     // Create project modules
     for (const component of circuitDesign.components) {
       try {
@@ -688,8 +734,50 @@ export class OrchestrationEngine {
             specifications: component.specifications || {}
           })];
         }
+        
+        // Detect if this is a programmable module
+        const moduleInfo = detectProgrammableModule(component);
+        let firmwareCode = "";
+        
+        if (moduleInfo.isProgrammable) {
+          console.log(`Detected programmable module: ${component.label} (${moduleInfo.platform}, ${moduleInfo.language})`);
+          programmableModules.push({ component, moduleInfo });
+          
+          // Generate firmware for this specific module
+          try {
+            this.broadcastUpdate(orchestratorRunId, "building", 45, 
+              `Generating ${moduleInfo.language} firmware for ${component.label}...`);
+            
+            const firmwareResult = await generateModuleFirmware({
+              component,
+              circuitContext: circuitDesign,
+              projectRequirements: context.userBrief || "Create a functional embedded system",
+              connections: circuitDesign.connections || []
+            });
+            
+            firmwareCode = firmwareResult.code;
+            
+            // Store firmware metadata in component specifications
+            component.specifications = {
+              ...component.specifications,
+              firmwareLanguage: firmwareResult.language,
+              firmwarePlatform: firmwareResult.platform,
+              firmwareDependencies: firmwareResult.dependencies,
+              setupInstructions: firmwareResult.setupInstructions
+            };
+            
+            console.log(`Generated ${moduleInfo.language} firmware for ${component.label}`);
+          } catch (firmwareError) {
+            console.error(`Failed to generate firmware for ${component.label}:`, firmwareError);
+            // Use generic firmware if available
+            firmwareCode = circuitDesign.firmwareCode || "";
+          }
+        } else {
+          // Use default firmware for non-programmable components
+          firmwareCode = "";
+        }
 
-        // Create project module
+        // Create project module with generated firmware
         await storage.createProjectModule({
           projectId: orchestratorRun.projectId,
           componentId: dbComponent[0].id,
@@ -697,12 +785,32 @@ export class OrchestrationEngine {
           label: component.label,
           position: component.position || { x: 100, y: 100 },
           configuration: component.specifications || {},
-          firmwareCode: circuitDesign.firmwareCode || ""
+          firmwareCode: firmwareCode
         });
       } catch (componentError) {
         console.error(`Failed to create module for component ${component.id}:`, componentError);
         // Continue with other components
       }
+    }
+    
+    // Store programmable modules info in context
+    await storage.updateOrchestratorRun(orchestratorRunId, {
+      context: {
+        ...context,
+        programmableModules: programmableModules.map(pm => ({
+          componentId: pm.component.id,
+          label: pm.component.label,
+          platform: pm.moduleInfo.platform,
+          language: pm.moduleInfo.language,
+          capabilities: pm.moduleInfo.capabilities
+        }))
+      }
+    });
+    
+    // Broadcast completion of module creation
+    if (programmableModules.length > 0) {
+      this.broadcastUpdate(orchestratorRunId, "building", 60, 
+        `Created ${programmableModules.length} programmable modules with auto-generated firmware`);
     }
 
     await storage.updateOrchestratorRun(orchestratorRunId, {
@@ -757,14 +865,27 @@ export class OrchestrationEngine {
 
     const context = orchestratorRun.context as any;
     
-    // Validate circuit (ensure it exists first)
-    const validation = context.circuitDesign ? await validateCircuit(context.circuitDesign) : { isValid: false, issues: ["No circuit design to validate"], suggestions: [] };
+    // Get guide sheet from context if available
+    const guideSheet = context.guideSheet;
+    
+    // Validate circuit with guide sheet constraints (ensure it exists first)
+    const validation = context.circuitDesign 
+      ? await validateCircuit(context.circuitDesign, guideSheet) 
+      : { isValid: false, issues: ["No circuit design to validate"], suggestions: [] };
+    
+    // If we have a guide sheet, also run local validation for detailed violations
+    let localValidation = null;
+    if (context.circuitDesign && guideSheet) {
+      localValidation = validateCircuitAgainstGuideSheet(context.circuitDesign, guideSheet);
+      console.log("Guide sheet validation result:", localValidation);
+    }
     
     await storage.updateOrchestratorRun(orchestratorRunId, {
       progress: 95,
       context: {
         ...context,
-        validation
+        validation,
+        guideSheetValidation: localValidation
       }
     });
 

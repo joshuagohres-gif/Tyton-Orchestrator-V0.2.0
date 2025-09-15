@@ -341,6 +341,362 @@ Focus on creating practical, manufacturable constraints that will guide the circ
 }
 
 
+// ===== MODULE DETECTION AND FIRMWARE GENERATION =====
+
+// Detect if a component is programmable and determine its language
+export function detectProgrammableModule(component: any): {
+  isProgrammable: boolean;
+  language: string;
+  platform: string;
+  capabilities: string[];
+} {
+  const typeLC = component.type?.toLowerCase() || '';
+  const labelLC = component.label?.toLowerCase() || '';
+  const mpnLC = component.mpn?.toLowerCase() || '';
+  const combinedText = `${typeLC} ${labelLC} ${mpnLC}`.toLowerCase();
+  
+  // Check for FPGAs first (by label/MPN since type enum doesn't include FPGA)
+  if (combinedText.match(/fpga|cpld|xilinx|artix|spartan|lattice|ice40|cyclone|altera|zynq/)) {
+    if (combinedText.includes('ice40') || combinedText.includes('lattice')) {
+      return {
+        isProgrammable: true,
+        language: 'verilog',
+        platform: 'Lattice iCE40',
+        capabilities: ['Configurable Logic', 'Block RAM', 'PLLs', 'GPIO']
+      };
+    }
+    if (combinedText.match(/artix|spartan|xilinx|zynq/)) {
+      return {
+        isProgrammable: true,
+        language: 'vhdl',
+        platform: 'Xilinx',
+        capabilities: ['Configurable Logic', 'Block RAM', 'DSP', 'PLLs', 'GPIO']
+      };
+    }
+    if (combinedText.match(/cyclone|altera|intel/)) {
+      return {
+        isProgrammable: true,
+        language: 'verilog',
+        platform: 'Intel/Altera',
+        capabilities: ['Configurable Logic', 'Block RAM', 'DSP', 'PLLs', 'GPIO']
+      };
+    }
+    // Generic FPGA
+    return {
+      isProgrammable: true,
+      language: 'verilog',
+      platform: 'Generic FPGA',
+      capabilities: ['Configurable Logic', 'Block RAM', 'GPIO']
+    };
+  }
+  
+  // Check for SoCs and processors (by label/MPN)
+  if (combinedText.match(/raspberry|bcm|soc|processor|zynq|imx|am335|rockchip/)) {
+    if (combinedText.includes('raspberry') || combinedText.includes('bcm')) {
+      return {
+        isProgrammable: true,
+        language: 'python',
+        platform: 'Raspberry Pi',
+        capabilities: ['Linux', 'GPIO', 'I2C', 'SPI', 'UART', 'USB', 'Ethernet', 'HDMI']
+      };
+    }
+    if (combinedText.includes('zynq')) {
+      return {
+        isProgrammable: true,
+        language: 'c',
+        platform: 'Xilinx Zynq',
+        capabilities: ['ARM Cortex-A9', 'FPGA Fabric', 'Linux', 'GPIO', 'I2C', 'SPI', 'UART']
+      };
+    }
+    // Generic SoC
+    return {
+      isProgrammable: true,
+      language: 'c',
+      platform: 'Generic SoC',
+      capabilities: ['Linux', 'GPIO', 'I2C', 'SPI', 'UART']
+    };
+  }
+  
+  // Check for microcontrollers (including by label/MPN when type is generic)
+  if (typeLC.includes('microcontroller') || typeLC === 'mcu' || 
+      combinedText.match(/esp32|esp8266|arduino|stm32|rp2040|pico|atmega|pic|msp430|nrf52/)) {
+    // ESP32 variants
+    if (mpnLC.includes('esp32') || labelLC.includes('esp32')) {
+      return {
+        isProgrammable: true,
+        language: 'cpp', // Arduino/ESP-IDF
+        platform: 'ESP32',
+        capabilities: ['WiFi', 'Bluetooth', 'GPIO', 'ADC', 'PWM', 'I2C', 'SPI', 'UART']
+      };
+    }
+    // ESP8266
+    if (mpnLC.includes('esp8266') || labelLC.includes('esp8266')) {
+      return {
+        isProgrammable: true,
+        language: 'cpp',
+        platform: 'ESP8266',
+        capabilities: ['WiFi', 'GPIO', 'ADC', 'PWM', 'I2C', 'SPI', 'UART']
+      };
+    }
+    // Arduino boards
+    if (mpnLC.includes('arduino') || labelLC.includes('arduino')) {
+      return {
+        isProgrammable: true,
+        language: 'cpp',
+        platform: 'Arduino',
+        capabilities: ['GPIO', 'ADC', 'PWM', 'I2C', 'SPI', 'UART']
+      };
+    }
+    // STM32
+    if (mpnLC.includes('stm32') || labelLC.includes('stm32')) {
+      return {
+        isProgrammable: true,
+        language: 'c',
+        platform: 'STM32',
+        capabilities: ['GPIO', 'ADC', 'DAC', 'PWM', 'I2C', 'SPI', 'UART', 'CAN', 'USB']
+      };
+    }
+    // Raspberry Pi Pico
+    if (mpnLC.includes('rp2040') || labelLC.includes('pico')) {
+      return {
+        isProgrammable: true,
+        language: 'python', // MicroPython default
+        platform: 'RP2040',
+        capabilities: ['GPIO', 'ADC', 'PWM', 'I2C', 'SPI', 'UART', 'PIO']
+      };
+    }
+    // Generic microcontroller
+    return {
+      isProgrammable: true,
+      language: 'cpp',
+      platform: 'Generic MCU',
+      capabilities: ['GPIO', 'ADC', 'PWM', 'I2C', 'SPI', 'UART']
+    };
+    // Nordic nRF52
+    if (combinedText.includes('nrf52') || combinedText.includes('nordic')) {
+      return {
+        isProgrammable: true,
+        language: 'c',
+        platform: 'Nordic nRF52',
+        capabilities: ['Bluetooth LE', 'GPIO', 'ADC', 'PWM', 'I2C', 'SPI', 'UART']
+      };
+    }
+    // PIC microcontrollers
+    if (combinedText.match(/pic16|pic18|pic24|pic32|microchip/)) {
+      return {
+        isProgrammable: true,
+        language: 'c',
+        platform: 'PIC',
+        capabilities: ['GPIO', 'ADC', 'PWM', 'I2C', 'SPI', 'UART']
+      };
+    }
+  }
+  
+  // Not programmable
+  return {
+    isProgrammable: false,
+    language: '',
+    platform: '',
+    capabilities: []
+  };
+}
+
+// Generate firmware for a specific programmable module
+export async function generateModuleFirmware({
+  component,
+  circuitContext,
+  projectRequirements,
+  connections
+}: {
+  component: any;
+  circuitContext: any;
+  projectRequirements: string;
+  connections: any[];
+}): Promise<{
+  code: string;
+  language: string;
+  platform: string;
+  setupInstructions: string;
+  dependencies: string[];
+}> {
+  const moduleInfo = detectProgrammableModule(component);
+  
+  if (!moduleInfo.isProgrammable) {
+    throw new Error(`Component ${component.label} is not programmable`);
+  }
+  
+  // Find connected components
+  const connectedComponents = connections
+    .filter(conn => 
+      conn.from?.componentId === component.id || 
+      conn.to?.componentId === component.id
+    )
+    .map(conn => {
+      const otherComponentId = conn.from?.componentId === component.id 
+        ? conn.to?.componentId 
+        : conn.from?.componentId;
+      return circuitContext.components?.find((c: any) => c.id === otherComponentId);
+    })
+    .filter(Boolean);
+  
+  const prompt = `Generate firmware code for this programmable module:
+
+Module: ${component.label} (${component.mpn || 'Generic'})
+Type: ${component.type}
+Platform: ${moduleInfo.platform}
+Language: ${moduleInfo.language}
+Capabilities: ${moduleInfo.capabilities.join(', ')}
+
+Project Requirements:
+${projectRequirements}
+
+Connected Components:
+${connectedComponents.map((c: any) => `- ${c.label} (${c.type})`).join('\n')}
+
+Connections:
+${connections.filter(conn => 
+    conn.from?.componentId === component.id || 
+    conn.to?.componentId === component.id
+  ).map(conn => `- ${conn.from?.componentId}:${conn.from?.portId} -> ${conn.to?.componentId}:${conn.to?.portId}`).join('\n')}
+
+Generate complete, production-ready firmware code that:
+1. Initializes all connected peripherals
+2. Implements the main functionality based on project requirements
+3. Handles all I/O operations with connected components
+4. Includes proper error handling and safety checks
+5. Uses appropriate libraries for the platform
+6. Includes setup/configuration instructions
+
+Return JSON format:
+{
+  "code": "// Complete firmware code here",
+  "language": "${moduleInfo.language}",
+  "platform": "${moduleInfo.platform}",
+  "setupInstructions": "Step-by-step setup guide",
+  "dependencies": ["library1", "library2"]
+}`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "system",
+          content: `You are an embedded systems expert specializing in ${moduleInfo.platform} firmware development. Generate production-ready, well-commented code.`
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
+      max_completion_tokens: 3000
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || "{}");
+    
+    return {
+      code: result.code || `// ${moduleInfo.platform} firmware\nvoid setup() { }\nvoid loop() { }`,
+      language: result.language || moduleInfo.language,
+      platform: result.platform || moduleInfo.platform,
+      setupInstructions: result.setupInstructions || "No setup instructions provided",
+      dependencies: result.dependencies || []
+    };
+  } catch (error) {
+    console.error("Firmware generation failed:", error);
+    
+    // Return fallback firmware based on platform
+    return {
+      code: generateFallbackFirmware(moduleInfo),
+      language: moduleInfo.language,
+      platform: moduleInfo.platform,
+      setupInstructions: "Basic setup for " + moduleInfo.platform,
+      dependencies: []
+    };
+  }
+}
+
+// Generate fallback firmware for when AI generation fails
+function generateFallbackFirmware(moduleInfo: any): string {
+  if (moduleInfo.platform === 'ESP32') {
+    return `// ESP32 Firmware
+#include <WiFi.h>
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("ESP32 initialized");
+  
+  // Initialize GPIO pins
+  pinMode(LED_BUILTIN, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(1000);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(1000);
+}`;
+  } else if (moduleInfo.platform === 'Arduino') {
+    return `// Arduino Firmware
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Arduino initialized");
+  
+  // Initialize GPIO pins
+  pinMode(LED_BUILTIN, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(LED_BUILTIN, HIGH);
+  delay(1000);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(1000);
+}`;
+  } else if (moduleInfo.platform === 'RP2040') {
+    return `# MicroPython firmware for RP2040
+import machine
+import time
+
+# Initialize LED
+led = machine.Pin(25, machine.Pin.OUT)
+
+print("RP2040 initialized")
+
+while True:
+    led.on()
+    time.sleep(1)
+    led.off()
+    time.sleep(1)`;
+  } else if (moduleInfo.language === 'verilog') {
+    return `// Verilog module for ${moduleInfo.platform}
+module top(
+    input clk,
+    input rst,
+    output reg led
+);
+
+reg [23:0] counter;
+
+always @(posedge clk or posedge rst) begin
+    if (rst) begin
+        counter <= 0;
+        led <= 0;
+    end else begin
+        counter <= counter + 1;
+        if (counter == 24'hFFFFFF) begin
+            led <= ~led;
+            counter <= 0;
+        end
+    end
+end
+
+endmodule`;
+  } else {
+    return `// Generic firmware for ${moduleInfo.platform}\n// Language: ${moduleInfo.language}\n\nvoid setup() {\n  // Initialize\n}\n\nvoid loop() {\n  // Main loop\n}`;
+  }
+}
+
 // ===== PHASE 2: CONSTRAINED CIRCUIT GENERATION =====
 
 export async function generateCircuit(request: CircuitGenerationRequest): Promise<CircuitGenerationResponse> {
