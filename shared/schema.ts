@@ -419,3 +419,23 @@ export type StageDefinition = typeof stageDefinitions.$inferSelect;
 export type InsertPipelineRun = z.infer<typeof insertPipelineRunSchema>;
 export type PipelineRun = typeof pipelineRuns.$inferSelect;
 export type InsertStageRun = z.infer<typeof insertStageRunSchema>;
+
+// Extended types for frontend usage with relations
+export type PipelineTemplateWithStages = PipelineTemplate & {
+  stageDefinitions?: StageDefinition[];
+};
+
+// Metadata types for type safety
+export type PipelineMetadata = {
+  tags?: string[];
+  difficulty?: "beginner" | "intermediate" | "advanced";
+  estimatedTime?: number;
+  description?: string;
+} & Record<string, any>;
+
+// Stage retry policy types
+export type StageRetryPolicy = {
+  maxAttempts?: number;
+  backoffStrategy?: "linear" | "exponential";
+  baseDelay?: number;
+};
