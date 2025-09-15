@@ -508,11 +508,56 @@ export class OrchestrationEngine {
 
     const context = orchestratorRun.context as any;
     
-    // Generate circuit using AI
-    const circuitDesign = await generateCircuit({
-      userBrief: context.userBrief,
-      projectTitle: context.projectTitle
-    });
+    // Generate circuit using AI with retry logic
+    let circuitDesign = null;
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (!circuitDesign && attempts < maxAttempts) {
+      attempts++;
+      try {
+        circuitDesign = await generateCircuit({
+          userBrief: context.userBrief || "Create a basic IoT device",
+          projectTitle: context.projectTitle || "IoT Project"
+        });
+        
+        // Validate the circuit design
+        if (!circuitDesign || !Array.isArray(circuitDesign.components) || circuitDesign.components.length === 0) {
+          console.warn(`Invalid circuit design on attempt ${attempts}, retrying...`);
+          circuitDesign = null;
+          if (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 2000 * attempts)); // Exponential backoff
+          }
+        }
+      } catch (error) {
+        console.error(`Circuit generation failed on attempt ${attempts}:`, error);
+        if (attempts >= maxAttempts) {
+          // Use fallback circuit design
+          circuitDesign = {
+            components: [
+              {
+                id: "mcu_fallback",
+                type: "microcontroller",
+                label: "ESP32 Development Board",
+                mpn: "ESP32-DEVKITC-32D",
+                specifications: {
+                  voltage: "3.3V",
+                  current: "500mA"
+                },
+                position: { x: 200, y: 200 },
+                ports: [
+                  { id: "vcc", type: "power", label: "3.3V" },
+                  { id: "gnd", type: "power", label: "GND" }
+                ]
+              }
+            ],
+            connections: [],
+            firmwareCode: "// Basic firmware\nvoid setup() { Serial.begin(115200); }\nvoid loop() { delay(1000); }",
+            explanation: "Fallback circuit design due to AI generation failure"
+          };
+        }
+      }
+    }
 
     // Update context with generated circuit
     await storage.updateOrchestratorRun(orchestratorRunId, {
@@ -559,31 +604,64 @@ export class OrchestrationEngine {
     const context = orchestratorRun.context as any;
     const circuitDesign = context.circuitDesign;
 
+    // Validate circuit design structure
+    if (!circuitDesign) {
+      throw new Error("Circuit design not found in orchestration context");
+    }
+
+    if (!circuitDesign.components || !Array.isArray(circuitDesign.components)) {
+      console.error('Invalid circuit design structure:', circuitDesign);
+      throw new Error("Circuit design does not contain a valid components array");
+    }
+
+    if (circuitDesign.components.length === 0) {
+      console.warn('Circuit design has no components, using default component');
+      circuitDesign.components = [{
+        id: "default_mcu",
+        type: "microcontroller",
+        label: "Default MCU",
+        mpn: "ESP32-DEVKITC-32D",
+        specifications: { voltage: "3.3V" },
+        position: { x: 200, y: 200 }
+      }];
+    }
+
     // Create project modules
     for (const component of circuitDesign.components) {
-      // Find or create component in database
-      let dbComponent = await storage.searchComponents(component.mpn || component.label);
-      if (dbComponent.length === 0) {
-        dbComponent = [await storage.createComponent({
-          mpn: component.mpn || `CUSTOM_${component.id}`,
-          manufacturer: "Generic",
-          category: component.type,
-          name: component.label,
-          description: `Auto-generated component for ${component.label}`,
-          specifications: component.specifications
-        })];
-      }
+      try {
+        // Validate component structure
+        if (!component.id || !component.label) {
+          console.warn('Skipping invalid component:', component);
+          continue;
+        }
 
-      // Create project module
-      await storage.createProjectModule({
-        projectId: orchestratorRun.projectId,
-        componentId: dbComponent[0].id,
-        nodeId: component.id,
-        label: component.label,
-        position: component.position,
-        configuration: component.specifications,
-        firmwareCode: circuitDesign.firmwareCode
-      });
+        // Find or create component in database
+        let dbComponent = await storage.searchComponents(component.mpn || component.label);
+        if (dbComponent.length === 0) {
+          dbComponent = [await storage.createComponent({
+            mpn: component.mpn || `CUSTOM_${component.id}`,
+            manufacturer: component.manufacturer || "Generic",
+            category: component.type || "passive",
+            name: component.label,
+            description: `Auto-generated component for ${component.label}`,
+            specifications: component.specifications || {}
+          })];
+        }
+
+        // Create project module
+        await storage.createProjectModule({
+          projectId: orchestratorRun.projectId,
+          componentId: dbComponent[0].id,
+          nodeId: component.id,
+          label: component.label,
+          position: component.position || { x: 100, y: 100 },
+          configuration: component.specifications || {},
+          firmwareCode: circuitDesign.firmwareCode || ""
+        });
+      } catch (componentError) {
+        console.error(`Failed to create module for component ${component.id}:`, componentError);
+        // Continue with other components
+      }
     }
 
     await storage.updateOrchestratorRun(orchestratorRunId, {
@@ -608,7 +686,7 @@ export class OrchestrationEngine {
     // Update stage run as completed
     await storage.updateStageRun(stageRun.id, {
       status: "completed",
-      output: { schematic, modulesCreated: circuitDesign.components.length },
+      output: { schematic, modulesCreated: circuitDesign.components ? circuitDesign.components.length : 0 },
       completedAt: new Date()
     });
   }
@@ -638,8 +716,8 @@ export class OrchestrationEngine {
 
     const context = orchestratorRun.context as any;
     
-    // Validate circuit
-    const validation = await validateCircuit(context.circuitDesign);
+    // Validate circuit (ensure it exists first)
+    const validation = context.circuitDesign ? await validateCircuit(context.circuitDesign) : { isValid: false, issues: ["No circuit design to validate"], suggestions: [] };
     
     await storage.updateOrchestratorRun(orchestratorRunId, {
       progress: 95,

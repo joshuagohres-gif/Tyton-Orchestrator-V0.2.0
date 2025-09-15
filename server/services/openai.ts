@@ -79,7 +79,7 @@ Focus on:
       messages: [
         {
           role: "system",
-          content: "You are an expert hardware design engineer specializing in IoT and embedded systems. Generate practical, manufacturable circuit designs with real components."
+          content: "You are an expert hardware design engineer specializing in IoT and embedded systems. Generate practical, manufacturable circuit designs with real components. Always respond with valid JSON."
         },
         {
           role: "user",
@@ -92,9 +92,64 @@ Focus on:
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
-    return result as CircuitGenerationResponse;
+    
+    // Validate and ensure proper structure
+    const validatedResult: CircuitGenerationResponse = {
+      components: Array.isArray(result.components) ? result.components : [],
+      connections: Array.isArray(result.connections) ? result.connections : [],
+      firmwareCode: result.firmwareCode || "",
+      explanation: result.explanation || "No explanation provided"
+    };
+
+    // Ensure each component has required fields
+    validatedResult.components = validatedResult.components.map((comp: any, index: number) => ({
+      id: comp.id || `component_${index}`,
+      type: comp.type || "passive",
+      label: comp.label || `Component ${index + 1}`,
+      mpn: comp.mpn,
+      specifications: comp.specifications || {},
+      position: comp.position || { x: 100 + index * 150, y: 100 },
+      ports: Array.isArray(comp.ports) ? comp.ports : []
+    }));
+
+    // Validate connections reference existing components
+    const componentIds = new Set(validatedResult.components.map(c => c.id));
+    validatedResult.connections = validatedResult.connections.filter((conn: any) => {
+      return conn?.from?.componentId && conn?.to?.componentId &&
+             componentIds.has(conn.from.componentId) && 
+             componentIds.has(conn.to.componentId);
+    });
+
+    return validatedResult;
   } catch (error) {
-    throw new Error(`Circuit generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('Circuit generation error:', error);
+    
+    // Return a default minimal circuit on error
+    return {
+      components: [
+        {
+          id: "mcu_1",
+          type: "microcontroller",
+          label: "ESP32 Development Board",
+          mpn: "ESP32-DEVKITC-32D",
+          specifications: {
+            voltage: "3.3V",
+            current: "500mA",
+            cpu: "Dual-core 240MHz",
+            memory: "520KB SRAM"
+          },
+          position: { x: 200, y: 200 },
+          ports: [
+            { id: "vcc", type: "power", label: "3.3V" },
+            { id: "gnd", type: "power", label: "GND" },
+            { id: "gpio0", type: "digital", label: "GPIO0" }
+          ]
+        }
+      ],
+      connections: [],
+      firmwareCode: "// Basic ESP32 firmware\nvoid setup() {\n  Serial.begin(115200);\n  Serial.println(\"ESP32 Ready\");\n}\n\nvoid loop() {\n  delay(1000);\n}",
+      explanation: "Default circuit with ESP32 microcontroller. AI generation failed, please try again."
+    };
   }
 }
 
