@@ -20,6 +20,7 @@ import {
   type OrchestratorRun,
   type InsertOrchestratorRun,
   type StageRun,
+  type InsertStageRun,
   type BomItem
 } from "@shared/schema";
 import { db } from "./db";
@@ -61,6 +62,8 @@ export interface IStorage {
   createOrchestratorRun(run: InsertOrchestratorRun): Promise<OrchestratorRun>;
   updateOrchestratorRun(id: string, updates: Partial<OrchestratorRun>): Promise<OrchestratorRun>;
   getStageRuns(orchestratorRunId: string): Promise<StageRun[]>;
+  createStageRun(run: InsertStageRun): Promise<StageRun>;
+  updateStageRun(id: string, updates: Partial<StageRun>): Promise<StageRun>;
 
   // BOM
   getProjectBOM(projectId: string): Promise<BomItem[]>;
@@ -316,12 +319,33 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async createStageRun(run: InsertStageRun): Promise<StageRun> {
+    return this.withRetry(async () => {
+      const [newRun] = await db
+        .insert(stageRuns)
+        .values(run)
+        .returning();
+      return newRun;
+    });
+  }
+
   async getProjectBOM(projectId: string): Promise<BomItem[]> {
     return this.withRetry(async () => {
       return await db
         .select()
         .from(bomItems)
         .where(eq(bomItems.projectId, projectId));
+    });
+  }
+
+  async updateStageRun(id: string, updates: Partial<StageRun>): Promise<StageRun> {
+    return this.withRetry(async () => {
+      const [updatedRun] = await db
+        .update(stageRuns)
+        .set(updates)
+        .where(eq(stageRuns.id, id))
+        .returning();
+      return updatedRun;
     });
   }
 }

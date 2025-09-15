@@ -382,6 +382,18 @@ export const insertPipelineRunSchema = createInsertSchema(pipelineRuns).pick({
   configuration: true,
 });
 
+export const insertStageRunSchema = createInsertSchema(stageRuns).pick({
+  orchestratorRunId: true,
+  stageName: true,
+  status: true,
+  input: true,
+  output: true,
+  errorMessage: true,
+  attempts: true,
+  pipelineRunId: true,
+  stageDefinitionId: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -406,3 +418,4 @@ export type InsertStageDefinition = z.infer<typeof insertStageDefinitionSchema>;
 export type StageDefinition = typeof stageDefinitions.$inferSelect;
 export type InsertPipelineRun = z.infer<typeof insertPipelineRunSchema>;
 export type PipelineRun = typeof pipelineRuns.$inferSelect;
+export type InsertStageRun = z.infer<typeof insertStageRunSchema>;
