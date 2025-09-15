@@ -7,39 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Settings, Play, FileText } from "lucide-react";
+import { Settings, Play, FileText, MousePointer2, Layers3, Info } from "lucide-react";
 import type { ProjectWithModules } from "@/types/project";
+import { Node } from "@xyflow/react";
 
 interface PropertiesPanelProps {
   project: ProjectWithModules;
+  selectedNode?: Node | null;
 }
 
-export default function PropertiesPanel({ project }: PropertiesPanelProps) {
+export default function PropertiesPanel({ project, selectedNode }: PropertiesPanelProps) {
   const [selectedTab, setSelectedTab] = useState("properties");
-  const [selectedComponentLabel, setSelectedComponentLabel] = useState("Main Controller");
-  const [clockSpeed, setClockSpeed] = useState("240");
-  const [wifiMode, setWifiMode] = useState("station-ap");
-
-  // Mock firmware code based on the design
-  const firmwareCode = `#include <WiFi.h>
-#include <DHT.h>
-
-#define DHT_PIN 2
-#define DHT_TYPE DHT22
-
-DHT dht(DHT_PIN, DHT_TYPE);
-
-void setup() {
-  Serial.begin(115200);
-  dht.begin();
-}
-
-void loop() {
-  float temp = dht.readTemperature();
-  float humidity = dht.readHumidity();
-  
-  // Send data...
-}`;
 
   return (
     <aside className="w-96 bg-card border-l border-border flex flex-col" data-testid="properties-panel">
@@ -76,77 +54,121 @@ void loop() {
 
         {/* Properties Tab Content */}
         <TabsContent value="properties" className="flex-1 overflow-y-auto m-0 p-4 space-y-4">
-          <div>
-            <h3 className="text-sm font-medium mb-2 text-foreground">Selected Component</h3>
-            <div className="p-3 bg-secondary rounded-lg border border-border">
-              <div className="flex items-center space-x-3 mb-3">
-                <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
-                  <span className="text-primary text-sm">🔧</span>
+          {selectedNode ? (
+            // Component Selected State
+            <>
+              <div>
+                <h3 className="text-sm font-medium mb-2 text-foreground">Selected Component</h3>
+                <div className="p-3 bg-secondary rounded-lg border border-border">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+                      <span className="text-primary text-sm">
+                        {selectedNode.data?.category === 'microcontroller' ? '🔧' :
+                         selectedNode.data?.category === 'sensor' ? '📡' :
+                         selectedNode.data?.category === 'communication' ? '📶' :
+                         selectedNode.data?.category === 'power' ? '⚡' : '🔌'}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{String(selectedNode.data?.label || 'Unknown Component')}</p>
+                      <p className="text-xs text-muted-foreground">{String(selectedNode.data?.category || 'Unknown Category')}</p>
+                    </div>
+                    <div className={`w-3 h-3 rounded-full ml-auto ${
+                      selectedNode.data?.status === 'validated' ? 'bg-green-500' :
+                      selectedNode.data?.status === 'error' ? 'bg-red-500' :
+                      selectedNode.data?.status === 'processing' ? 'bg-yellow-500 animate-pulse' :
+                      'bg-secondary'
+                    }`} title={String(selectedNode.data?.status || 'Unknown')} />
+                  </div>
                 </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium mb-2 text-foreground">Configuration</h4>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="component-label" className="text-xs text-muted-foreground">
+                      Component Label
+                    </Label>
+                    <Input
+                      id="component-label"
+                      value={String(selectedNode.data?.label || '')}
+                      className="mt-1 bg-input border-border text-foreground"
+                      data-testid="input-component-label"
+                      placeholder="Enter component label"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Position</Label>
+                    <div className="flex space-x-2 mt-1">
+                      <Input
+                        value={`${selectedNode.position.x.toFixed(0)}`}
+                        readOnly
+                        className="bg-secondary border-border text-muted-foreground"
+                        data-testid="input-position-x"
+                      />
+                      <Input
+                        value={`${selectedNode.position.y.toFixed(0)}`}
+                        readOnly
+                        className="bg-secondary border-border text-muted-foreground"
+                        data-testid="input-position-y"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {selectedNode.data?.ports && Array.isArray(selectedNode.data.ports) && selectedNode.data.ports.length > 0 && (
                 <div>
-                  <p className="text-sm font-medium text-foreground">ESP32-S3</p>
-                  <p className="text-xs text-muted-foreground">Microcontroller Unit</p>
+                  <h4 className="text-sm font-medium mb-2 text-foreground">Ports</h4>
+                  <div className="space-y-2">
+                    {selectedNode.data.ports.map((port: any) => (
+                      <div key={port.id} className="flex items-center justify-between p-2 bg-secondary rounded border border-border">
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-3 h-3 rounded-full ${
+                            port.type === 'power' ? 'bg-red-500' :
+                            port.type === 'data' ? 'bg-blue-500' :
+                            'bg-gray-500'
+                          }`} />
+                          <span className="text-sm text-foreground">{port.label}</span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">{port.direction}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            // Empty State - No Component Selected
+            <div className="flex flex-col items-center justify-center h-full py-8" data-testid="properties-empty-state">
+              <div className="text-center space-y-4">
+                <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
+                  <MousePointer2 className="w-8 h-8 text-muted-foreground" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-medium text-foreground">No Component Selected</h3>
+                  <p className="text-sm text-muted-foreground max-w-md">
+                    Click on any component in the canvas to view its properties and configure its settings.
+                  </p>
+                </div>
+                <div className="space-y-3 text-left bg-muted/30 rounded-lg p-4 max-w-sm">
+                  <div className="flex items-center space-x-2 text-sm">
+                    <Layers3 className="w-4 h-4 text-primary" />
+                    <span className="text-foreground">Drag components from the left panel</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-sm">
+                    <MousePointer2 className="w-4 h-4 text-primary" />
+                    <span className="text-foreground">Click to select and configure</span>
+                  </div>
+                  <div className="flex items-center space-x-2 text-sm">
+                    <Info className="w-4 h-4 text-primary" />
+                    <span className="text-foreground">View ports, settings, and more</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-medium mb-2 text-foreground">Configuration</h4>
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="component-label" className="text-xs text-muted-foreground">
-                  Component Label
-                </Label>
-                <Input
-                  id="component-label"
-                  value={selectedComponentLabel}
-                  onChange={(e) => setSelectedComponentLabel(e.target.value)}
-                  className="mt-1 bg-input border-border text-foreground"
-                  data-testid="input-component-label"
-                />
-              </div>
-              <div>
-                <Label htmlFor="clock-speed" className="text-xs text-muted-foreground">
-                  Clock Speed
-                </Label>
-                <Select value={clockSpeed} onValueChange={setClockSpeed}>
-                  <SelectTrigger className="mt-1 bg-input border-border text-foreground" data-testid="select-clock-speed">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    <SelectItem value="240">240 MHz</SelectItem>
-                    <SelectItem value="160">160 MHz</SelectItem>
-                    <SelectItem value="80">80 MHz</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="wifi-mode" className="text-xs text-muted-foreground">
-                  WiFi Mode
-                </Label>
-                <Select value={wifiMode} onValueChange={setWifiMode}>
-                  <SelectTrigger className="mt-1 bg-input border-border text-foreground" data-testid="select-wifi-mode">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
-                    <SelectItem value="station-ap">Station + AP</SelectItem>
-                    <SelectItem value="station">Station Only</SelectItem>
-                    <SelectItem value="ap">AP Only</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-medium mb-2 text-foreground">Firmware Code</h4>
-            <div className="bg-secondary border border-border rounded-lg p-3">
-              <pre className="text-xs font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap" data-testid="text-firmware-code">
-                <code>{firmwareCode}</code>
-              </pre>
-            </div>
-          </div>
+          )}
         </TabsContent>
 
         {/* Orchestration Tab Content */}

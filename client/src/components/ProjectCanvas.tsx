@@ -10,6 +10,8 @@ import type { ProjectWithModules } from "@/types/project";
 
 interface ProjectCanvasProps {
   project: ProjectWithModules;
+  selectedNode?: Node | null;
+  onSelectionChange?: (node: Node | null) => void;
 }
 
 // Custom node component for hardware modules
@@ -88,10 +90,10 @@ const nodeTypes = {
   hardwareModule: HardwareModuleNode,
 };
 
-export default function ProjectCanvas({ project }: ProjectCanvasProps) {
+export default function ProjectCanvas({ project, selectedNode, onSelectionChange }: ProjectCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const internalSelectedNode = selectedNode || null;
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [enableSnapping, setEnableSnapping] = useState(true);
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
@@ -310,11 +312,12 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
     [updateModulePositionMutation, sendMessage, project.id]
   );
 
-  const onSelectionChange = useCallback(
+  const handleSelectionChange = useCallback(
     ({ nodes: selectedNodes }: { nodes: Node[] }) => {
-      setSelectedNode(selectedNodes[0] || null);
+      const newSelection = selectedNodes[0] || null;
+      onSelectionChange?.(newSelection);
     },
-    []
+    [onSelectionChange]
   );
 
   // Real-time cursor tracking with proper flow coordinate transformation
@@ -502,7 +505,7 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onNodeDragStop={onNodeDragStop}
-        onSelectionChange={onSelectionChange}
+        onSelectionChange={handleSelectionChange}
         onDrop={onDrop}
         onDragOver={onDragOver}
         onMouseMove={onMouseMove}
@@ -556,8 +559,8 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
         <div className="absolute top-4 left-4 z-40">
           <div className="bg-card/90 backdrop-blur-sm border border-border rounded-lg px-3 py-2">
             <div className="text-xs text-muted-foreground font-mono" data-testid="text-coordinates">
-              {selectedNode 
-                ? `Node: (${selectedNode.position.x.toFixed(0)}, ${selectedNode.position.y.toFixed(0)})`
+              {internalSelectedNode 
+                ? `Node: (${internalSelectedNode.position.x.toFixed(0)}, ${internalSelectedNode.position.y.toFixed(0)})`
                 : `Cursor: (${cursorPosition.x.toFixed(0)}, ${cursorPosition.y.toFixed(0)})`
               }
             </div>

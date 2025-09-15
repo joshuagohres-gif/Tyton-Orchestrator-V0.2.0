@@ -1,5 +1,7 @@
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { Node } from "@xyflow/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import ProjectCanvas from "@/components/ProjectCanvas";
 import ComponentLibrary from "@/components/ComponentLibrary";
@@ -12,6 +14,7 @@ import type { ProjectWithModules } from "@/types/project";
 
 export default function Project() {
   const { id } = useParams<{ id: string }>();
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
   const { data: project, isLoading, error } = useQuery<ProjectWithModules>({
     queryKey: ["/api/projects", id],
@@ -113,10 +116,17 @@ export default function Project() {
         <ComponentLibrary />
 
         {/* Main Canvas Area */}
-        <ProjectCanvas project={project} />
+        <ProjectCanvas 
+          project={project} 
+          selectedNode={selectedNode}
+          onSelectionChange={setSelectedNode}
+        />
 
         {/* Right Sidebar - Properties & Orchestration */}
-        <PropertiesPanel project={project} />
+        <PropertiesPanel 
+          project={project} 
+          selectedNode={selectedNode}
+        />
       </div>
 
       {/* Floating Orchestration Status */}
