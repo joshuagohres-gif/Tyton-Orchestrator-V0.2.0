@@ -243,7 +243,7 @@ Focus on creating practical, manufacturable constraints that will guide the circ
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.7, // Lower temperature for more consistent constraints
+      temperature: 1, // Default temperature required by the model
       max_completion_tokens: 3000
     });
 
@@ -590,7 +590,7 @@ Return JSON format:
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.7,
+      temperature: 1,
       max_completion_tokens: 3000
     });
 
@@ -797,7 +797,7 @@ Return JSON format:
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.7,
+      temperature: 1,
       max_completion_tokens: 2000
     });
 
