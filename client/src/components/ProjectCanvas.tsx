@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ReactFlow, Node, Edge, addEdge, useNodesState, useEdgesState, Controls, Background, ConnectionMode, Connection } from "@xyflow/react";
+import { ReactFlow, Node, Edge, addEdge, useNodesState, useEdgesState, Controls, Background, BackgroundVariant, ConnectionMode, Connection } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useMutation } from "@tanstack/react-query";
@@ -86,8 +86,8 @@ const nodeTypes = {
 };
 
 export default function ProjectCanvas({ project }: ProjectCanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
   const { sendMessage, lastMessage, connectionStatus } = useWebSocket();
@@ -398,7 +398,7 @@ export default function ProjectCanvas({ project }: ProjectCanvasProps) {
           position="bottom-right"
         />
         <Background 
-          variant="grid" 
+          variant={BackgroundVariant.Dots} 
           gap={20} 
           color="rgba(255, 255, 255, 0.03)"
           className="opacity-50"

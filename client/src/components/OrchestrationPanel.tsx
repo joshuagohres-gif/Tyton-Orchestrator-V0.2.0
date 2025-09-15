@@ -92,22 +92,22 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
       id: '1',
       name: 'Planning',
       status: orchestrationStatus?.status === 'running' && orchestrationStatus?.currentStage === 'planning' ? 'running' : 
-             orchestrationStatus?.progress >= 25 ? 'completed' : 'pending',
-      progress: Math.min(orchestrationStatus?.progress || 0, 25),
+             (orchestrationStatus?.progress ?? 0) >= 25 ? 'completed' : 'pending',
+      progress: Math.min(orchestrationStatus?.progress ?? 0, 25),
     },
     {
       id: '2', 
       name: 'Building',
       status: orchestrationStatus?.status === 'running' && orchestrationStatus?.currentStage === 'building' ? 'running' :
-             orchestrationStatus?.progress >= 85 ? 'completed' : 'pending',
-      progress: Math.max(0, Math.min((orchestrationStatus?.progress || 0) - 25, 60)),
+             (orchestrationStatus?.progress ?? 0) >= 85 ? 'completed' : 'pending',
+      progress: Math.max(0, Math.min((orchestrationStatus?.progress ?? 0) - 25, 60)),
     },
     {
       id: '3',
       name: 'Validation', 
       status: orchestrationStatus?.status === 'running' && orchestrationStatus?.currentStage === 'validation' ? 'running' :
-             orchestrationStatus?.progress >= 95 ? 'completed' : 'pending',
-      progress: Math.max(0, Math.min((orchestrationStatus?.progress || 0) - 85, 10)),
+             (orchestrationStatus?.progress ?? 0) >= 95 ? 'completed' : 'pending',
+      progress: Math.max(0, Math.min((orchestrationStatus?.progress ?? 0) - 85, 10)),
     },
     {
       id: '4',
