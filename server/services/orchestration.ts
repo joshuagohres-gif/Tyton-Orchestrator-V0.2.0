@@ -309,6 +309,37 @@ export class OrchestrationEngine {
     }
   }
 
+  private calculateBackoffDelay(retryPolicy: RetryPolicy, attempt: number): number {
+    const baseDelay = retryPolicy.baseDelay;
+    let delay = baseDelay;
+    
+    switch (retryPolicy.backoffStrategy) {
+      case 'exponential':
+        delay = baseDelay * Math.pow(2, attempt);
+        break;
+      case 'linear':
+        delay = baseDelay * (attempt + 1);
+        break;
+      case 'fixed':
+      default:
+        delay = baseDelay;
+        break;
+    }
+    
+    // Apply max delay limit
+    if (retryPolicy.maxDelay) {
+      delay = Math.min(delay, retryPolicy.maxDelay);
+    }
+    
+    // Add jitter if configured
+    if (retryPolicy.jitter) {
+      const jitterRange = delay * 0.1; // 10% jitter
+      delay += (Math.random() - 0.5) * 2 * jitterRange;
+    }
+    
+    return Math.max(delay, 0);
+  }
+
   private async handlePipelineStageError(
     orchestratorRunId: string,
     stageDefinition: any,
@@ -1014,22 +1045,37 @@ export class OrchestrationEngine {
     };
   }
 
-  private broadcastUpdate(orchestratorRunId: string, status: string, progress: number, message?: string) {
-    const update = {
-      type: "orchestration_progress",
-      orchestratorRunId,
-      status,
-      progress,
-      message,
-      timestamp: new Date().toISOString()
-    };
+  private async broadcastUpdate(orchestratorRunId: string, status: string, progress: number, message?: string) {
+    try {
+      // Get latest orchestration run for complete status
+      const orchestratorRun = await storage.getOrchestratorRun(orchestratorRunId);
+      if (!orchestratorRun) return;
+      
+      // Get stage runs for complete context
+      const stageRuns = await storage.getStageRuns(orchestratorRunId);
+      
+      const update = {
+        type: "orchestration_progress",
+        projectId: orchestratorRun.projectId,
+        id: orchestratorRunId,
+        status: orchestratorRun.status,
+        currentStage: orchestratorRun.currentStage,
+        progress: orchestratorRun.progress,
+        context: orchestratorRun.context,
+        stageRuns,
+        message,
+        timestamp: new Date().toISOString()
+      };
 
-    // Broadcast to all connected WebSocket clients
-    this.wsConnections.forEach((ws) => {
-      if (ws.readyState === 1) { // WebSocket.OPEN
-        ws.send(JSON.stringify(update));
-      }
-    });
+      // Broadcast to all connected WebSocket clients
+      this.wsConnections.forEach((ws) => {
+        if (ws.readyState === 1) { // WebSocket.OPEN
+          ws.send(JSON.stringify(update));
+        }
+      });
+    } catch (error) {
+      console.error('Failed to broadcast update:', error);
+    }
   }
 
   addWebSocketConnection(id: string, ws: any) {

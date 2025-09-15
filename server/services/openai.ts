@@ -87,8 +87,8 @@ Focus on:
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.7,
-      max_tokens: 4000
+      temperature: 1,
+      max_completion_tokens: 4000
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
@@ -157,8 +157,8 @@ Provide real, available components with manufacturer part numbers. Response in J
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.3,
-      max_tokens: 2000
+      temperature: 1,
+      max_completion_tokens: 2000
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
@@ -202,8 +202,8 @@ Return JSON format:
         }
       ],
       response_format: { type: "json_object" },
-      temperature: 0.1,
-      max_tokens: 1500
+      temperature: 1,
+      max_completion_tokens: 1500
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
