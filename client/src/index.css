@@ -131,6 +131,16 @@
     isolation: isolate;
   }
 
+  /* Fix for rogue Dialog overlays - ensures they only appear when their Dialog is actually open */
+  [data-radix-portal] [data-state="closed"] {
+    display: none !important;
+  }
+  
+  /* Prevent any Dialog overlay from appearing unless explicitly controlled */
+  [data-radix-dialog-overlay][data-state="closed"] {
+    display: none !important;
+  }
+
   /* Mid Layer - Main stars including constellation stars (20 stars) */
   .starry-bg::before {
     content: '';
