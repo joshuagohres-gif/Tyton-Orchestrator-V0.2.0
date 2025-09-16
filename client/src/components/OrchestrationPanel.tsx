@@ -176,7 +176,7 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
   const isPaused = orchestrationStatus?.status === 'paused';
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-4 space-y-6 relative z-10">
       {/* Start Orchestration Section */}
       {canStart && (
         <div className="space-y-4">
