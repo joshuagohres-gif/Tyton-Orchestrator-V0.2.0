@@ -55,7 +55,7 @@ export default function Project() {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden starry-bg">
+    <div className="min-h-screen flex flex-col starry-bg">
       {/* Top Navigation Bar */}
       <AppHeader>
         <div className="flex items-center space-x-4">
@@ -115,7 +115,7 @@ export default function Project() {
       </AppHeader>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden relative z-10">
+      <div className="flex-1 flex flex-col relative z-10">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
           {/* Tab Navigation */}
           <div className="border-b border-border bg-card px-4">
@@ -148,7 +148,7 @@ export default function Project() {
           </div>
 
           {/* Canvas Tab */}
-          <TabsContent value="canvas" className="flex-1 flex overflow-hidden m-0">
+          <TabsContent value="canvas" className="flex-1 flex m-0">
             {/* Left Sidebar - Component Library */}
             <ComponentLibrary />
 
@@ -171,12 +171,12 @@ export default function Project() {
           </TabsContent>
 
           {/* 3D Design Tab */}
-          <TabsContent value="3d-design" className="flex-1 overflow-hidden m-0">
+          <TabsContent value="3d-design" className="flex-1 m-0">
             <Design3DViewer project={project} />
           </TabsContent>
 
           {/* Schematic Tab */}
-          <TabsContent value="schematic" className="flex-1 overflow-hidden m-0 flex">
+          <TabsContent value="schematic" className="flex-1 m-0 flex">
             <div className="flex-1 bg-background">
               <SchematicDiagram project={project} />
             </div>

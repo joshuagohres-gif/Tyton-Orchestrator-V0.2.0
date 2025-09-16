@@ -128,7 +128,7 @@
   .starry-bg {
     background: linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #000000 100%);
     position: relative;
-    overflow: hidden;
+    isolation: isolate;
   }
 
   /* Mid Layer - Main stars including constellation stars (20 stars) */
