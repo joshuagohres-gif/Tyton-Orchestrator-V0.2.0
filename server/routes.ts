@@ -5,7 +5,8 @@ import { storage } from "./storage";
 import { orchestrationEngine } from "./services/orchestration";
 import { designCustomModule } from "./services/openai";
 import { generateKiCadFiles, generateBOM } from "./services/eda";
-import { insertProjectSchema, insertProjectModuleSchema, insertProjectConnectionSchema, type Component } from "@shared/schema";
+import { generateCADModel, exportSTL, exportSTEP, type CADParameters } from "./services/cad";
+import { insertProjectSchema, insertProjectModuleSchema, insertProjectConnectionSchema, type Component, type ParametricData } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -98,50 +99,178 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Mechanical Components (placeholder for 3D Design tab)
+  // Mechanical Components 
   app.get("/api/projects/:id/mechanical", async (req, res) => {
     try {
-      // Placeholder data for mechanical components
-      // In a real implementation, these would be stored in the database
-      const mechanicalComponents = [
-        {
-          id: '1',
-          name: 'Main Housing',
-          type: 'housing',
-          dimensions: { length: 200, width: 150, height: 80 },
-          material: 'ABS',
-          manufacturingMethod: '3D_PRINT',
-          clearanceClass: 'NORMAL',
-          position: { x: 0, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 }
-        },
-        {
-          id: '2',
-          name: 'Mounting Bracket',
-          type: 'bracket',
-          dimensions: { length: 50, width: 30, height: 60 },
-          material: 'Aluminum',
-          manufacturingMethod: 'CNC',
-          clearanceClass: 'CLOSE',
-          position: { x: 1.5, y: 0, z: 0.5 },
-          rotation: { x: 0, y: Math.PI / 4, z: 0 }
-        },
-        {
-          id: '3',
-          name: 'Heat Sink',
-          type: 'heatsink',
-          dimensions: { length: 80, width: 80, height: 40 },
-          material: 'Aluminum',
-          manufacturingMethod: 'CNC',
-          clearanceClass: 'NORMAL',
-          position: { x: -1, y: 0.5, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 }
-        }
-      ];
+      // Get mechanical components from database
+      const mechanicalComponents = await storage.getMechanicalComponents(req.params.id);
+      
+      // If no components exist, return sample data for demo
+      if (!mechanicalComponents || mechanicalComponents.length === 0) {
+        const sampleComponents = [
+          {
+            id: '1',
+            name: 'Main Housing',
+            type: 'housing',
+            dimensions: { length: 200, width: 150, height: 80 },
+            material: 'ABS',
+            manufacturingMethod: '3D_PRINT',
+            clearanceClass: 'NORMAL',
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 }
+          },
+          {
+            id: '2',
+            name: 'Mounting Bracket',
+            type: 'bracket',
+            dimensions: { length: 50, width: 30, height: 60 },
+            material: 'Aluminum',
+            manufacturingMethod: 'CNC',
+            clearanceClass: 'CLOSE',
+            position: { x: 1.5, y: 0, z: 0.5 },
+            rotation: { x: 0, y: Math.PI / 4, z: 0 }
+          },
+          {
+            id: '3',
+            name: 'Heat Sink',
+            type: 'heatsink',
+            dimensions: { length: 80, width: 80, height: 40 },
+            material: 'Aluminum',
+            manufacturingMethod: 'CNC',
+            clearanceClass: 'NORMAL',
+            position: { x: -1, y: 0.5, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 }
+          }
+        ];
+        return res.json(sampleComponents);
+      }
       
       res.json(mechanicalComponents);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch mechanical components" });
+    }
+  });
+
+  // Generate CAD model from parameters
+  app.post("/api/projects/:id/mechanical/generate", async (req, res) => {
+    try {
+      const params: CADParameters = req.body;
+      
+      if (!params.type || !params.dimensions) {
+        return res.status(400).json({ error: "Missing required parameters: type and dimensions" });
+      }
+
+      const result = generateCADModel(params);
+      
+      // Store the generated model in database if valid
+      if (result.validation.valid) {
+        const parametricData: ParametricData = {
+          points: [],
+          curves: [],
+          segments: [],
+          features: []
+        };
+        
+        const mechanicalComponent = await storage.createMechanicalComponent({
+          projectId: req.params.id,
+          componentType: params.type,
+          parametricData,
+          dimensions: params.dimensions,
+          material: params.material?.type,
+          manufacturingMethod: params.features?.wallThickness ? 'CNC' : '3D_PRINT',
+          clearanceClass: 'NORMAL'
+        });
+
+        res.json({
+          id: mechanicalComponent.id,
+          geometry: result.geometry,
+          validation: result.validation,
+          metadata: {
+            vertexCount: result.geometry.vertices.length,
+            faceCount: result.geometry.faces.length,
+            type: params.type,
+            dimensions: params.dimensions
+          }
+        });
+      } else {
+        res.status(422).json({
+          error: "Model validation failed",
+          validation: result.validation
+        });
+      }
+    } catch (error) {
+      console.error("CAD generation error:", error);
+      res.status(500).json({ error: "Failed to generate CAD model" });
+    }
+  });
+
+  // Export STL
+  app.get("/api/projects/:id/mechanical/:componentId/export/stl", async (req, res) => {
+    try {
+      const { format = 'binary' } = req.query;
+      const component = await storage.getMechanicalComponent(req.params.componentId);
+      
+      if (!component) {
+        return res.status(404).json({ error: "Component not found" });
+      }
+
+      // Regenerate geometry from stored parameters
+      const params: CADParameters = {
+        type: component.componentType as any,
+        dimensions: component.dimensions as any,
+        material: component.material ? { type: component.material } : undefined,
+        units: 'mm'
+      };
+
+      const result = generateCADModel(params);
+      const stlData = exportSTL(result.geometry, format as 'ascii' | 'binary');
+
+      if (format === 'ascii') {
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Content-Disposition', `attachment; filename="component-${component.id}.stl"`);
+        res.send(stlData);
+      } else {
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="component-${component.id}.stl"`);
+        res.send(stlData);
+      }
+    } catch (error) {
+      console.error("STL export error:", error);
+      res.status(500).json({ error: "Failed to export STL" });
+    }
+  });
+
+  // Export STEP
+  app.get("/api/projects/:id/mechanical/:componentId/export/step", async (req, res) => {
+    try {
+      const component = await storage.getMechanicalComponent(req.params.componentId);
+      
+      if (!component) {
+        return res.status(404).json({ error: "Component not found" });
+      }
+
+      // Regenerate geometry from stored parameters
+      const params: CADParameters = {
+        type: component.componentType as any,
+        dimensions: component.dimensions as any,
+        material: component.material ? { type: component.material } : undefined,
+        units: 'mm'
+      };
+
+      const result = generateCADModel(params);
+      const stepData = exportSTEP(result.geometry, {
+        projectId: req.params.id,
+        componentId: component.id,
+        material: component.material,
+        manufacturingMethod: component.manufacturingMethod
+      });
+
+      res.setHeader('Content-Type', 'model/step');
+      res.setHeader('Content-Disposition', `attachment; filename="component-${component.id}.step"`);
+      res.send(stepData);
+    } catch (error) {
+      console.error("STEP export error:", error);
+      res.status(500).json({ error: "Failed to export STEP" });
     }
   });
 

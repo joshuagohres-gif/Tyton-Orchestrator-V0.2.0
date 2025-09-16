@@ -9,6 +9,7 @@ import {
   bomItems,
   pipelineTemplates,
   stageDefinitions,
+  mechanicalComponents,
   type User, 
   type InsertUser,
   type Project,
@@ -25,7 +26,9 @@ import {
   type InsertStageRun,
   type BomItem,
   type PipelineTemplate,
-  type StageDefinition
+  type StageDefinition,
+  type MechanicalComponent,
+  type InsertMechanicalComponent
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, like, and, desc, asc } from "drizzle-orm";
@@ -76,6 +79,13 @@ export interface IStorage {
   // Pipeline Templates
   getPipelineTemplate(templateId: string): Promise<PipelineTemplate | undefined>;
   getStageDefinitionsByTemplate(templateId: string): Promise<StageDefinition[]>;
+
+  // Mechanical Components
+  getMechanicalComponents(projectId: string): Promise<MechanicalComponent[]>;
+  getMechanicalComponent(id: string): Promise<MechanicalComponent | undefined>;
+  createMechanicalComponent(component: InsertMechanicalComponent): Promise<MechanicalComponent>;
+  updateMechanicalComponent(id: string, updates: Partial<MechanicalComponent>): Promise<MechanicalComponent>;
+  deleteMechanicalComponent(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -236,7 +246,7 @@ export class DatabaseStorage implements IStorage {
     return this.withRetry(async () => {
       const [newModule] = await db
         .insert(projectModules)
-        .values(module)
+        .values(module as any)
         .returning();
       return newModule;
     });
@@ -381,6 +391,53 @@ export class DatabaseStorage implements IStorage {
         .from(stageDefinitions)
         .where(eq(stageDefinitions.templateId, templateId))
         .orderBy(asc(stageDefinitions.order));
+    });
+  }
+
+  async getMechanicalComponents(projectId: string): Promise<MechanicalComponent[]> {
+    return this.withRetry(async () => {
+      return await db
+        .select()
+        .from(mechanicalComponents)
+        .where(eq(mechanicalComponents.projectId, projectId))
+        .orderBy(desc(mechanicalComponents.createdAt));
+    });
+  }
+
+  async getMechanicalComponent(id: string): Promise<MechanicalComponent | undefined> {
+    return this.withRetry(async () => {
+      const [component] = await db
+        .select()
+        .from(mechanicalComponents)
+        .where(eq(mechanicalComponents.id, id));
+      return component || undefined;
+    });
+  }
+
+  async createMechanicalComponent(component: InsertMechanicalComponent): Promise<MechanicalComponent> {
+    return this.withRetry(async () => {
+      const [newComponent] = await db
+        .insert(mechanicalComponents)
+        .values(component as any)
+        .returning();
+      return newComponent;
+    });
+  }
+
+  async updateMechanicalComponent(id: string, updates: Partial<MechanicalComponent>): Promise<MechanicalComponent> {
+    return this.withRetry(async () => {
+      const [updatedComponent] = await db
+        .update(mechanicalComponents)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(mechanicalComponents.id, id))
+        .returning();
+      return updatedComponent;
+    });
+  }
+
+  async deleteMechanicalComponent(id: string): Promise<void> {
+    return this.withRetry(async () => {
+      await db.delete(mechanicalComponents).where(eq(mechanicalComponents.id, id));
     });
   }
 }
