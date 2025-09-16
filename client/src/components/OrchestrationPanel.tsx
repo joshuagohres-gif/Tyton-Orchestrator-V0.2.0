@@ -4,9 +4,19 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Pause, Square, Send, CheckCircle, Clock, AlertCircle, Loader2, Wifi, WifiOff } from "lucide-react";
+import { 
+  Play, Pause, Square, Send, CheckCircle, Clock, AlertCircle, Loader2, Wifi, WifiOff,
+  RotateCcw, SkipForward, Settings, Info, ExternalLink, AlertTriangle, CheckCircle2,
+  User, Bot, Timer, Activity, TrendingUp
+} from "lucide-react";
 import { useOrchestration } from "@/providers/OrchestrationProvider";
+import StageDetailsModal from "./StageDetailsModal";
 import type { ProjectWithModules, OrchestrationStage } from "@/types/project";
 
 interface OrchestrationPanelProps {
@@ -16,6 +26,8 @@ interface OrchestrationPanelProps {
 export default function OrchestrationPanel({ project }: OrchestrationPanelProps) {
   const [userBrief, setUserBrief] = useState("");
   const [agentMessage, setAgentMessage] = useState("");
+  const [selectedStage, setSelectedStage] = useState<OrchestrationStage | null>(null);
+  const [stageDetailsOpen, setStageDetailsOpen] = useState(false);
   const { toast } = useToast();
   
   // Use the enhanced OrchestrationProvider
@@ -82,9 +94,43 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
         return 'In Progress';
       case 'error':
         return 'Error';
+      case 'paused':
+        return 'Paused';
+      case 'skipped':
+        return 'Skipped';
       default:
         return 'Pending';
     }
+  };
+
+  const handleStageClick = (stage: OrchestrationStage) => {
+    setSelectedStage(stage);
+    setStageDetailsOpen(true);
+  };
+
+  const handleStageAction = async (action: 'retry' | 'skip' | 'configure', stage: OrchestrationStage) => {
+    try {
+      // This would be connected to actual stage control APIs
+      toast({
+        title: `Stage ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+        description: `${action === 'retry' ? 'Retrying' : action === 'skip' ? 'Skipping' : 'Configuring'} stage: ${stage.name}`,
+      });
+    } catch (error) {
+      toast({
+        title: "Stage Action Failed",
+        description: `Failed to ${action} stage: ${stage.name}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getStageMetrics = (stage: OrchestrationStage) => {
+    // Mock metrics for demo - in real app would come from backend
+    return {
+      duration: stage.status === 'completed' ? Math.floor(Math.random() * 120) + 30 : null,
+      attempts: stage.status === 'error' ? Math.floor(Math.random() * 3) + 1 : 1,
+      estimatedTime: stage.status === 'pending' ? Math.floor(Math.random() * 180) + 60 : null,
+    };
   };
 
   const mockStages: OrchestrationStage[] = [
@@ -184,46 +230,135 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
       <div className="space-y-4">
         <h4 className="text-sm font-medium text-foreground">Pipeline Stages</h4>
         <div className="space-y-3">
-          {mockStages.map((stage, index) => (
-            <div
-              key={stage.id}
-              className={`flex items-center space-x-3 p-3 bg-secondary rounded-lg border-l-4 ${
-                stage.status === 'completed' ? 'border-green-500' :
-                stage.status === 'running' ? 'border-primary' :
-                stage.status === 'error' ? 'border-destructive' :
-                'border-muted'
-              } ${stage.status === 'pending' ? 'opacity-50' : ''}`}
-              data-testid={`stage-${stage.id}`}
-            >
-              <div className="flex-shrink-0">
-                {getStageIcon(stage.status)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium text-foreground">
-                    {index + 1}. {stage.name}
-                  </p>
-                  <span className={`text-xs font-medium ${
-                    stage.status === 'completed' ? 'text-green-500' :
-                    stage.status === 'running' ? 'text-primary' :
-                    stage.status === 'error' ? 'text-destructive' :
-                    'text-muted-foreground'
-                  }`}>
-                    {getStageStatusText(stage.status)}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mb-2">
-                  {stage.name === 'Planning' && 'Circuit design and component selection'}
-                  {stage.name === 'Building' && 'Generating schematics and layouts'}
-                  {stage.name === 'Validation' && 'ERC/DRC checks and optimization'}
-                  {stage.name === 'Export' && 'Generate production files'}
-                </p>
-                {stage.status === 'running' && (
-                  <Progress value={stage.progress} className="h-2" />
-                )}
-              </div>
-            </div>
-          ))}
+          {mockStages.map((stage, index) => {
+            const metrics = getStageMetrics(stage);
+            return (
+              <Card
+                key={stage.id}
+                className={`cursor-pointer transition-all hover:shadow-md border-l-4 ${
+                  stage.status === 'completed' ? 'border-green-500' :
+                  stage.status === 'running' ? 'border-primary' :
+                  stage.status === 'error' ? 'border-destructive' :
+                  'border-muted'
+                } ${stage.status === 'pending' ? 'opacity-60' : ''}`}
+                onClick={() => handleStageClick(stage)}
+                data-testid={`stage-${stage.id}`}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start space-x-3 flex-1">
+                      <div className="flex-shrink-0 mt-0.5">
+                        {getStageIcon(stage.status)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <h4 className="text-sm font-medium text-foreground">
+                            {index + 1}. {stage.name}
+                          </h4>
+                          <Badge variant={stage.status === 'completed' ? 'default' : 
+                                        stage.status === 'running' ? 'secondary' :
+                                        stage.status === 'error' ? 'destructive' : 'outline'}
+                                 className="text-xs">
+                            {getStageStatusText(stage.status)}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          {stage.name === 'Planning' && 'Circuit design and component selection'}
+                          {stage.name === 'Building' && 'Generating schematics and layouts'}
+                          {stage.name === 'Validation' && 'ERC/DRC checks and optimization'}
+                          {stage.name === 'Export' && 'Generate production files'}
+                        </p>
+                        
+                        {/* Stage Metrics */}
+                        <div className="flex items-center space-x-4 text-xs text-muted-foreground mb-2">
+                          {metrics.duration && (
+                            <div className="flex items-center space-x-1">
+                              <Timer className="w-3 h-3" />
+                              <span>{metrics.duration}s</span>
+                            </div>
+                          )}
+                          {metrics.estimatedTime && (
+                            <div className="flex items-center space-x-1">
+                              <Clock className="w-3 h-3" />
+                              <span>~{Math.floor(metrics.estimatedTime / 60)}m</span>
+                            </div>
+                          )}
+                          {metrics.attempts > 1 && (
+                            <div className="flex items-center space-x-1">
+                              <RotateCcw className="w-3 h-3" />
+                              <span>{metrics.attempts} attempts</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {stage.status === 'running' && (
+                          <Progress value={stage.progress} className="h-2 mb-2" />
+                        )}
+                        
+                        {stage.status === 'error' && (
+                          <Alert className="border-destructive/20 bg-destructive/5 mb-2">
+                            <AlertTriangle className="h-3 w-3" />
+                            <AlertDescription className="text-xs">
+                              {stage.name === 'Planning' && 'Failed to analyze circuit requirements'}
+                              {stage.name === 'Building' && 'Schematic generation encountered errors'}
+                              {stage.name === 'Validation' && 'ERC checks found critical issues'}
+                              {stage.name === 'Export' && 'File generation failed'}
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Stage Actions */}
+                    <div className="flex items-center space-x-1 ml-2">
+                      {stage.status === 'error' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStageAction('retry', stage);
+                          }}
+                          data-testid={`button-retry-${stage.id}`}
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                        </Button>
+                      )}
+                      
+                      {(stage.status === 'error' || stage.status === 'pending') && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStageAction('skip', stage);
+                          }}
+                          data-testid={`button-skip-${stage.id}`}
+                        >
+                          <SkipForward className="w-3 h-3" />
+                        </Button>
+                      )}
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStageAction('configure', stage);
+                        }}
+                        data-testid={`button-configure-${stage.id}`}
+                      >
+                        <Settings className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
 
@@ -303,6 +438,14 @@ export default function OrchestrationPanel({ project }: OrchestrationPanelProps)
           </Button>
         </div>
       </div>
+
+      {/* Stage Details Modal */}
+      <StageDetailsModal
+        stage={selectedStage}
+        open={stageDetailsOpen}
+        onOpenChange={setStageDetailsOpen}
+        onStageAction={handleStageAction}
+      />
     </div>
   );
 }
