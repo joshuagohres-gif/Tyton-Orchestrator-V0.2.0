@@ -98,6 +98,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Mechanical Components (placeholder for 3D Design tab)
+  app.get("/api/projects/:id/mechanical", async (req, res) => {
+    try {
+      // Placeholder data for mechanical components
+      // In a real implementation, these would be stored in the database
+      const mechanicalComponents = [
+        {
+          id: '1',
+          name: 'Main Housing',
+          type: 'housing',
+          dimensions: { length: 200, width: 150, height: 80 },
+          material: 'ABS',
+          manufacturingMethod: '3D_PRINT',
+          clearanceClass: 'NORMAL',
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 }
+        },
+        {
+          id: '2',
+          name: 'Mounting Bracket',
+          type: 'bracket',
+          dimensions: { length: 50, width: 30, height: 60 },
+          material: 'Aluminum',
+          manufacturingMethod: 'CNC',
+          clearanceClass: 'CLOSE',
+          position: { x: 1.5, y: 0, z: 0.5 },
+          rotation: { x: 0, y: Math.PI / 4, z: 0 }
+        },
+        {
+          id: '3',
+          name: 'Heat Sink',
+          type: 'heatsink',
+          dimensions: { length: 80, width: 80, height: 40 },
+          material: 'Aluminum',
+          manufacturingMethod: 'CNC',
+          clearanceClass: 'NORMAL',
+          position: { x: -1, y: 0.5, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 }
+        }
+      ];
+      
+      res.json(mechanicalComponents);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch mechanical components" });
+    }
+  });
+
   // Project Modules
   app.post("/api/projects/:id/modules", async (req, res) => {
     try {

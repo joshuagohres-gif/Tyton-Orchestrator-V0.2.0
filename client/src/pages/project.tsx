@@ -8,13 +8,17 @@ import ComponentLibrary from "@/components/ComponentLibrary";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import FloatingOrchestrationStatus from "@/components/FloatingOrchestrationStatus";
 import AppHeader from "@/components/AppHeader";
-import { Microchip, Save, Download, Settings, Users } from "lucide-react";
+import Design3DViewer from "@/components/Design3DViewer";
+import SchematicDiagram from "@/components/SchematicDiagram";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Microchip, Save, Download, Settings, Users, Cpu, Box, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ProjectWithModules } from "@/types/project";
 
 export default function Project() {
   const { id } = useParams<{ id: string }>();
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("canvas");
 
   const { data: project, isLoading, error } = useQuery<ProjectWithModules>({
     queryKey: ["/api/projects", id],
@@ -111,26 +115,74 @@ export default function Project() {
       </AppHeader>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Component Library */}
-        <ComponentLibrary />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+          {/* Tab Navigation */}
+          <div className="border-b border-border bg-card px-4">
+            <TabsList className="h-12 bg-transparent p-0">
+              <TabsTrigger 
+                value="canvas" 
+                className="h-12 px-6 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent rounded-none"
+                data-testid="tab-canvas"
+              >
+                <Cpu className="w-4 h-4 mr-2" />
+                Canvas
+              </TabsTrigger>
+              <TabsTrigger 
+                value="3d-design" 
+                className="h-12 px-6 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent rounded-none"
+                data-testid="tab-3d-design"
+              >
+                <Box className="w-4 h-4 mr-2" />
+                3D Design
+              </TabsTrigger>
+              <TabsTrigger 
+                value="schematic" 
+                className="h-12 px-6 text-sm font-medium border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent rounded-none"
+                data-testid="tab-schematic"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Schematic
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-        {/* Main Canvas Area with Error Boundary */}
-        <div className="flex-1 flex flex-col" data-testid="canvas-root">
-          <div className="w-full h-full bg-background border-r">
-            <ProjectCanvasSimple 
+          {/* Canvas Tab */}
+          <TabsContent value="canvas" className="flex-1 flex overflow-hidden m-0">
+            {/* Left Sidebar - Component Library */}
+            <ComponentLibrary />
+
+            {/* Main Canvas Area with Error Boundary */}
+            <div className="flex-1 flex flex-col" data-testid="canvas-root">
+              <div className="w-full h-full bg-background border-r">
+                <ProjectCanvasSimple 
+                  project={project} 
+                  selectedNode={selectedNode}
+                  onSelectionChange={setSelectedNode}
+                />
+              </div>
+            </div>
+
+            {/* Right Sidebar - Properties & Orchestration */}
+            <PropertiesPanel 
               project={project} 
               selectedNode={selectedNode}
-              onSelectionChange={setSelectedNode}
             />
-          </div>
-        </div>
+          </TabsContent>
 
-        {/* Right Sidebar - Properties & Orchestration */}
-        <PropertiesPanel 
-          project={project} 
-          selectedNode={selectedNode}
-        />
+          {/* 3D Design Tab */}
+          <TabsContent value="3d-design" className="flex-1 overflow-hidden m-0">
+            <Design3DViewer project={project} />
+          </TabsContent>
+
+          {/* Schematic Tab */}
+          <TabsContent value="schematic" className="flex-1 overflow-hidden m-0 flex">
+            <div className="flex-1 bg-background">
+              <SchematicDiagram project={project} />
+            </div>
+            <PropertiesPanel project={project} selectedNode={selectedNode} />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Floating Orchestration Status */}
