@@ -1,5 +1,5 @@
-import { useState, Suspense } from "react";
-import { Canvas } from "@react-three/fiber";
+import { useState, Suspense, useMemo, useRef, useEffect } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, Grid, Box, Edges, Environment } from "@react-three/drei";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -8,20 +8,24 @@ import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQuery } from "@tanstack/react-query";
-import { Maximize, Move, RotateCw, Package, Settings2, Layers } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Maximize, Move, RotateCw, Package, Settings2, Layers, Hammer, Download, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import type { ProjectWithModules } from "@/types/project";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import * as THREE from "three";
 
 interface Design3DViewerProps {
   project: ProjectWithModules;
 }
 
-// Mechanical component type (temporary until API is ready)
+// Mechanical component type
 interface MechanicalComponent {
   id: string;
   name: string;
-  type: 'housing' | 'bracket' | 'heatsink' | 'plate' | 'enclosure';
+  type: 'housing' | 'bracket' | 'heatsink' | 'plate' | 'enclosure' | 'box' | 'cylinder';
   dimensions: {
     length: number;
     width: number;
@@ -32,6 +36,21 @@ interface MechanicalComponent {
   clearanceClass: 'LOOSE' | 'NORMAL' | 'CLOSE';
   position: { x: number; y: number; z: number };
   rotation: { x: number; y: number; z: number };
+  geometry?: CADGeometry;
+  modified?: boolean;
+}
+
+// CAD Geometry from backend
+interface CADGeometry {
+  vertices: { x: number; y: number; z: number }[];
+  faces: { vertices: [number, number, number]; normal?: { x: number; y: number; z: number } }[];
+}
+
+// Validation result from CAD service
+interface ValidationResult {
+  valid: boolean;
+  warnings?: string[];
+  errors?: string[];
 }
 
 // Component colors based on type
@@ -40,30 +59,67 @@ const componentColors = {
   bracket: '#3b82f6',
   heatsink: '#94a3b8',
   plate: '#71717a',
-  enclosure: '#52525b'
+  enclosure: '#52525b',
+  box: '#6b7280',
+  cylinder: '#3b82f6'
 };
 
-// 3D Component mesh
+// 3D Component mesh with CAD geometry support
 function MechanicalMesh({ component, selected, onClick }: {
   component: MechanicalComponent;
   selected: boolean;
   onClick: () => void;
 }) {
+  const meshRef = useRef<THREE.Mesh>(null);
   const color = componentColors[component.type] || '#6b7280';
-  const scale = [
-    component.dimensions.length / 100,
-    component.dimensions.height / 100,
-    component.dimensions.width / 100
-  ];
+  
+  // Create geometry from CAD data if available
+  const geometry = useMemo(() => {
+    if (component.geometry && component.geometry.vertices.length > 0) {
+      const geo = new THREE.BufferGeometry();
+      
+      // Convert vertices to Float32Array
+      const vertices: number[] = [];
+      component.geometry.vertices.forEach(v => {
+        vertices.push(v.x / 100, v.y / 100, v.z / 100); // Scale down for display
+      });
+      
+      // Convert faces to indices
+      const indices: number[] = [];
+      component.geometry.faces.forEach(face => {
+        indices.push(...face.vertices);
+      });
+      
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+      
+      return geo;
+    }
+    
+    // Fallback to box geometry
+    return new THREE.BoxGeometry(
+      component.dimensions.length / 100,
+      component.dimensions.height / 100,
+      component.dimensions.width / 100
+    );
+  }, [component.geometry, component.dimensions]);
+
+  // Rotate mesh if it's been modified
+  useFrame((state, delta) => {
+    if (meshRef.current && component.modified) {
+      meshRef.current.rotation.y += delta * 0.5;
+    }
+  });
 
   return (
     <group
       position={[component.position.x, component.position.y, component.position.z]}
       rotation={[component.rotation.x, component.rotation.y, component.rotation.z]}
     >
-      <Box
-        args={[1, 1, 1]}
-        scale={scale as [number, number, number]}
+      <mesh
+        ref={meshRef}
+        geometry={geometry}
         onClick={onClick}
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -80,17 +136,20 @@ function MechanicalMesh({ component, selected, onClick }: {
           roughness={component.material === 'Aluminum' || component.material === 'Steel' ? 0.3 : 0.8}
         />
         {selected && <Edges linewidth={2} color="#fbbf24" />}
-      </Box>
+      </mesh>
     </group>
   );
 }
 
 export default function Design3DViewer({ project }: Design3DViewerProps) {
+  const { toast } = useToast();
   const [selectedComponent, setSelectedComponent] = useState<MechanicalComponent | null>(null);
   const [dimensions, setDimensions] = useState({ length: 100, width: 100, height: 50 });
   const [material, setMaterial] = useState<string>('ABS');
   const [manufacturingMethod, setManufacturingMethod] = useState<string>('3D_PRINT');
   const [clearanceClass, setClearanceClass] = useState<string>('NORMAL');
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [components, setComponents] = useState<MechanicalComponent[]>([]);
 
   // Query mechanical components
   const { data: mechanicalComponents, isLoading } = useQuery<MechanicalComponent[]>({
@@ -98,42 +157,197 @@ export default function Design3DViewer({ project }: Design3DViewerProps) {
     enabled: true
   });
 
-  // Use placeholder data for now
-  const components = mechanicalComponents || [
-    {
-      id: '1',
-      name: 'Main Housing',
-      type: 'housing' as const,
-      dimensions: { length: 200, width: 150, height: 80 },
-      material: 'ABS' as const,
-      manufacturingMethod: '3D_PRINT' as const,
-      clearanceClass: 'NORMAL' as const,
-      position: { x: 0, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 }
-    },
-    {
-      id: '2',
-      name: 'Mounting Bracket',
-      type: 'bracket' as const,
-      dimensions: { length: 50, width: 30, height: 60 },
-      material: 'Aluminum' as const,
-      manufacturingMethod: 'CNC' as const,
-      clearanceClass: 'CLOSE' as const,
-      position: { x: 1.5, y: 0, z: 0.5 },
-      rotation: { x: 0, y: Math.PI / 4, z: 0 }
-    },
-    {
-      id: '3',
-      name: 'Heat Sink',
-      type: 'heatsink' as const,
-      dimensions: { length: 80, width: 80, height: 40 },
-      material: 'Aluminum' as const,
-      manufacturingMethod: 'CNC' as const,
-      clearanceClass: 'NORMAL' as const,
-      position: { x: -1, y: 0.5, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 }
+  // Initialize components from query or use defaults
+  useEffect(() => {
+    if (mechanicalComponents) {
+      setComponents(mechanicalComponents);
+    } else {
+      // Default components for demo
+      setComponents([
+        {
+          id: '1',
+          name: 'Main Housing',
+          type: 'housing' as const,
+          dimensions: { length: 200, width: 150, height: 80 },
+          material: 'ABS' as const,
+          manufacturingMethod: '3D_PRINT' as const,
+          clearanceClass: 'NORMAL' as const,
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 }
+        },
+        {
+          id: '2',
+          name: 'Mounting Bracket',
+          type: 'bracket' as const,
+          dimensions: { length: 50, width: 30, height: 60 },
+          material: 'Aluminum' as const,
+          manufacturingMethod: 'CNC' as const,
+          clearanceClass: 'CLOSE' as const,
+          position: { x: 1.5, y: 0, z: 0.5 },
+          rotation: { x: 0, y: Math.PI / 4, z: 0 }
+        },
+        {
+          id: '3',
+          name: 'Heat Sink',
+          type: 'heatsink' as const,
+          dimensions: { length: 80, width: 80, height: 40 },
+          material: 'Aluminum' as const,
+          manufacturingMethod: 'CNC' as const,
+          clearanceClass: 'NORMAL' as const,
+          position: { x: -1, y: 0.5, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 }
+        }
+      ]);
     }
-  ];
+  }, [mechanicalComponents]);
+
+  // Check if parameters have been modified
+  const isModified = useMemo(() => {
+    if (!selectedComponent) return false;
+    return (
+      selectedComponent.dimensions.length !== dimensions.length ||
+      selectedComponent.dimensions.width !== dimensions.width ||
+      selectedComponent.dimensions.height !== dimensions.height ||
+      selectedComponent.material !== material ||
+      selectedComponent.manufacturingMethod !== manufacturingMethod ||
+      selectedComponent.clearanceClass !== clearanceClass
+    );
+  }, [selectedComponent, dimensions, material, manufacturingMethod, clearanceClass]);
+
+  // Generate CAD mutation
+  const generateCADMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedComponent) throw new Error('No component selected');
+      
+      const response = await apiRequest('/api/projects/' + project.id + '/mechanical/generate', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: selectedComponent.type === 'housing' ? 'box' : selectedComponent.type,
+          dimensions,
+          material: { type: material },
+          features: {
+            wallThickness: manufacturingMethod === 'CNC' ? 2.0 : 1.5,
+            filletRadius: 2.0
+          },
+          units: 'mm'
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to generate CAD model');
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // Update the component with new geometry
+      setComponents(prev => prev.map(comp => 
+        comp.id === selectedComponent?.id 
+          ? { 
+              ...comp, 
+              geometry: data.geometry,
+              dimensions,
+              material: material as MechanicalComponent['material'],
+              manufacturingMethod: manufacturingMethod as MechanicalComponent['manufacturingMethod'],
+              clearanceClass: clearanceClass as MechanicalComponent['clearanceClass'],
+              modified: false
+            }
+          : comp
+      ));
+      
+      // Update selected component
+      if (selectedComponent) {
+        setSelectedComponent({
+          ...selectedComponent,
+          geometry: data.geometry,
+          dimensions,
+          material: material as MechanicalComponent['material'],
+          manufacturingMethod: manufacturingMethod as MechanicalComponent['manufacturingMethod'],
+          clearanceClass: clearanceClass as MechanicalComponent['clearanceClass'],
+          modified: false
+        });
+      }
+      
+      setValidationResult(data.validation);
+      toast({
+        title: "CAD Model Generated",
+        description: `Successfully generated ${selectedComponent?.name}`,
+      });
+      
+      // Invalidate cache to refresh component list
+      queryClient.invalidateQueries({ queryKey: ['/api/projects', project.id, 'mechanical'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Generation Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Export STL function
+  const handleExportSTL = async () => {
+    if (!selectedComponent) return;
+    
+    try {
+      const response = await fetch(`/api/projects/${project.id}/mechanical/${selectedComponent.id}/export/stl`);
+      if (!response.ok) throw new Error('Export failed');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedComponent.name.replace(/\s+/g, '_').toLowerCase()}.stl`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Export Successful",
+        description: "STL file downloaded",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Could not export STL file",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Export STEP function
+  const handleExportSTEP = async () => {
+    if (!selectedComponent) return;
+    
+    try {
+      const response = await fetch(`/api/projects/${project.id}/mechanical/${selectedComponent.id}/export/step`);
+      if (!response.ok) throw new Error('Export failed');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${selectedComponent.name.replace(/\s+/g, '_').toLowerCase()}.step`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Export Successful",
+        description: "STEP file downloaded",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Could not export STEP file",
+        variant: "destructive"
+      });
+    }
+  };
 
   return (
     <div className="flex h-full w-full bg-background">
@@ -238,9 +452,16 @@ export default function Design3DViewer({ project }: Design3DViewerProps) {
                       <span className="font-medium text-foreground" data-testid="text-component-name">
                         {selectedComponent.name}
                       </span>
-                      <Badge variant="secondary" data-testid="badge-component-type">
-                        {selectedComponent.type}
-                      </Badge>
+                      <div className="flex items-center space-x-2">
+                        {isModified && (
+                          <Badge variant="outline" className="text-yellow-500 border-yellow-500" data-testid="badge-modified">
+                            Modified
+                          </Badge>
+                        )}
+                        <Badge variant="secondary" data-testid="badge-component-type">
+                          {selectedComponent.type}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -365,14 +586,108 @@ export default function Design3DViewer({ project }: Design3DViewerProps) {
 
                 <Separator />
 
+                {/* Validation Feedback */}
+                {validationResult && (
+                  <>
+                    {validationResult.errors && validationResult.errors.length > 0 && (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          {validationResult.errors.map((error, i) => (
+                            <div key={i} className="text-sm" data-testid={`text-error-${i}`}>
+                              {error}
+                            </div>
+                          ))}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {validationResult.warnings && validationResult.warnings.length > 0 && (
+                      <Alert>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>
+                          {validationResult.warnings.map((warning, i) => (
+                            <div key={i} className="text-sm" data-testid={`text-warning-${i}`}>
+                              {warning}
+                            </div>
+                          ))}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    {validationResult.valid && !validationResult.errors?.length && !validationResult.warnings?.length && (
+                      <Alert className="border-green-500">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <AlertDescription className="text-green-500">
+                          Model validated successfully
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </>
+                )}
+
                 {/* Actions */}
-                <div className="flex space-x-2">
-                  <Button className="flex-1" variant="outline" data-testid="button-reset">
-                    Reset
-                  </Button>
-                  <Button className="flex-1" data-testid="button-apply">
-                    Apply Changes
-                  </Button>
+                <div className="space-y-2">
+                  <div className="flex space-x-2">
+                    <Button 
+                      className="flex-1" 
+                      variant="outline" 
+                      data-testid="button-reset"
+                      onClick={() => {
+                        if (selectedComponent) {
+                          setDimensions(selectedComponent.dimensions);
+                          setMaterial(selectedComponent.material);
+                          setManufacturingMethod(selectedComponent.manufacturingMethod);
+                          setClearanceClass(selectedComponent.clearanceClass);
+                          setValidationResult(null);
+                        }
+                      }}
+                    >
+                      Reset
+                    </Button>
+                    <Button 
+                      className="flex-1" 
+                      data-testid="button-generate"
+                      disabled={!isModified || generateCADMutation.isPending}
+                      onClick={() => generateCADMutation.mutate()}
+                    >
+                      {generateCADMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Hammer className="mr-2 h-4 w-4" />
+                          Generate CAD
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  
+                  {/* Export Buttons */}
+                  <div className="flex space-x-2">
+                    <Button 
+                      className="flex-1" 
+                      variant="secondary" 
+                      size="sm"
+                      data-testid="button-export-stl"
+                      disabled={!selectedComponent?.geometry}
+                      onClick={handleExportSTL}
+                    >
+                      <Download className="mr-2 h-3 w-3" />
+                      Export STL
+                    </Button>
+                    <Button 
+                      className="flex-1" 
+                      variant="secondary" 
+                      size="sm"
+                      data-testid="button-export-step"
+                      disabled={!selectedComponent?.geometry}
+                      onClick={handleExportSTEP}
+                    >
+                      <Download className="mr-2 h-3 w-3" />
+                      Export STEP
+                    </Button>
+                  </div>
                 </div>
               </>
             ) : (
