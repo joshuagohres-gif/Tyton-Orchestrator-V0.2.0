@@ -141,22 +141,6 @@
     display: none !important;
   }
 
-  /* Fix potential TabsContent layout issues */
-  [data-state="inactive"] {
-    display: none !important;
-  }
-  
-  /* Ensure TabsContent doesn't have layout conflicts */
-  [data-radix-tabs-content] {
-    background: transparent !important;
-  }
-
-  /* Fix SVG background issues in dark mode */
-  svg.bg-background, svg.bg-card {
-    max-height: 300px !important;
-    overflow: hidden !important;
-  }
-
   /* Mid Layer - Main stars including constellation stars (20 stars) */
   .starry-bg::before {
     content: '';
