@@ -2,9 +2,9 @@
 
 ## Overview
 
-Tyton Orchestrator is a comprehensive AI-powered hardware design platform that enables researchers and engineers to design, validate, and manufacture electronic systems through automated workflows. The application orchestrates end-to-end hardware design projects from initial concept to manufacturing-ready outputs, leveraging AI to generate circuit schematics, PCB layouts, and firmware code automatically.
+Tyton Orchestrator is a comprehensive AI-powered hardware design platform that enables researchers and engineers to design, validate, and manufacture both electronic systems and mechanical enclosures through automated workflows. The application orchestrates end-to-end hardware design projects from initial concept to manufacturing-ready outputs, leveraging AI to generate circuit schematics, PCB layouts, 3D mechanical CAD models, and firmware code automatically.
 
-The platform provides real-time collaborative design capabilities with a visual canvas interface, component sourcing with pricing data, and export functionality for production-ready artifacts including KiCad files, BOMs, and netlists.
+The platform provides real-time collaborative design capabilities with a visual canvas interface for electronics and an interactive 3D viewer for mechanical components. It includes component sourcing with pricing data, parametric CAD generation for housings and heat sinks, and comprehensive export functionality for production-ready artifacts including KiCad files, STL/STEP models for 3D printing and CNC manufacturing, BOMs, and netlists.
 
 ## User Preferences
 
@@ -19,23 +19,26 @@ The client is built as a single-page application using React with TypeScript, ut
 - **State Management**: React Query (TanStack Query) for server state management with local component state for UI interactions
 - **Routing**: Wouter for lightweight client-side routing
 - **Canvas Visualization**: React Flow (@xyflow/react) for interactive hardware design canvas with drag-and-drop component placement
+- **3D Visualization**: Three.js with React Three Fiber for interactive 3D CAD model viewing and manipulation
 - **Real-time Updates**: WebSocket integration for live collaboration and orchestration progress updates
 
 ### Backend Architecture
 The server implements a REST API using Express.js with TypeScript, following a modular service-oriented approach:
 
-- **API Layer**: Express routes handling CRUD operations for projects, components, and orchestration control
-- **Business Logic**: Separate service modules for orchestration engine, EDA processing, and OpenAI integration
+- **API Layer**: Express routes handling CRUD operations for projects, components, orchestration control, and CAD generation
+- **Business Logic**: Separate service modules for orchestration engine, EDA processing, CAD generation, and OpenAI integration
+- **CAD Service**: Parametric CAD generation for mechanical components with STL/STEP export capabilities
 - **Storage Layer**: Abstracted storage interface allowing for flexible database implementations
 - **WebSocket Server**: Real-time communication for collaborative features and live progress updates
 
 ### Data Storage
 The application uses PostgreSQL as the primary database with Drizzle ORM for type-safe database operations:
 
-- **Schema Design**: Relational model with tables for users, projects, components, modules, connections, and orchestration runs
+- **Schema Design**: Relational model with tables for users, projects, components, modules (electrical/mechanical/hybrid), connections, mechanical components, and orchestration runs
 - **Database Provider**: Neon serverless PostgreSQL with connection pooling
 - **Migrations**: Drizzle Kit for schema management and migrations
 - **Type Safety**: Generated TypeScript types from database schema using drizzle-zod
+- **CAD Storage**: Parametric data and geometry stored as JSONB for flexible 3D model representation
 
 ### Authentication and Authorization
 Currently implements a mock user system for demonstration purposes with a fixed demo user ID. The architecture supports extension to full authentication:
@@ -56,6 +59,8 @@ Currently implements a mock user system for demonstration purposes with a fixed 
 - **Tailwind CSS**: Utility-first CSS framework with custom design system variables
 - **Lucide Icons**: Comprehensive icon library for consistent iconography
 - **React Flow**: Specialized library for node-based graph interfaces and canvas interactions
+- **Three.js & React Three Fiber**: 3D graphics library for WebGL-based CAD model visualization
+- **React Three Drei**: Helper components for Three.js including OrbitControls and environment presets
 
 ### Database and Infrastructure
 - **Neon Database**: Serverless PostgreSQL with WebSocket support for real-time features
