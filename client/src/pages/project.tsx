@@ -115,7 +115,7 @@ export default function Project() {
       </AppHeader>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative z-10">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
           {/* Tab Navigation */}
           <div className="border-b border-border bg-card px-4">
