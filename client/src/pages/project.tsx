@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Node } from "@xyflow/react";
 import { Skeleton } from "@/components/ui/skeleton";
-import ProjectCanvas from "@/components/ProjectCanvas";
+import ProjectCanvasSimple from "@/components/ProjectCanvasSimple";
 import ComponentLibrary from "@/components/ComponentLibrary";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import FloatingOrchestrationStatus from "@/components/FloatingOrchestrationStatus";
@@ -115,12 +115,16 @@ export default function Project() {
         {/* Left Sidebar - Component Library */}
         <ComponentLibrary />
 
-        {/* Main Canvas Area */}
-        <ProjectCanvas 
-          project={project} 
-          selectedNode={selectedNode}
-          onSelectionChange={setSelectedNode}
-        />
+        {/* Main Canvas Area with Error Boundary */}
+        <div className="flex-1 flex flex-col" data-testid="canvas-root">
+          <div className="w-full h-full bg-background border-r">
+            <ProjectCanvasSimple 
+              project={project} 
+              selectedNode={selectedNode}
+              onSelectionChange={setSelectedNode}
+            />
+          </div>
+        </div>
 
         {/* Right Sidebar - Properties & Orchestration */}
         <PropertiesPanel 

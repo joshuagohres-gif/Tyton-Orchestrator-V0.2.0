@@ -1,21 +1,53 @@
 import { useCallback, useEffect, useState } from "react";
-import { ReactFlow, Node, Edge, addEdge, useNodesState, useEdgesState, useReactFlow, Controls, Background, BackgroundVariant, ConnectionMode, Connection } from "@xyflow/react";
+import { ReactFlow, Node, Edge, addEdge, useNodesState, useEdgesState, useReactFlow, Controls, Background, BackgroundVariant, ConnectionMode, Connection, Handle, Position } from "@xyflow/react";
 import { Button } from "@/components/ui/button";
-import { Grid3X3, MousePointer2, Crosshair, ZoomIn, ZoomOut, RotateCcw, RotateCw, Maximize } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Card, CardContent } from "@/components/ui/card";
+import { Grid3X3, MousePointer2, Crosshair, ZoomIn, ZoomOut, RotateCcw, RotateCw, Maximize, Layers, Eye, EyeOff, Lock, Unlock, Copy, Trash2, Group, AlignCenter } from "lucide-react";
 import "@xyflow/react/dist/style.css";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { ProjectWithModules } from "@/types/project";
 
 interface ProjectCanvasProps {
   project: ProjectWithModules;
   selectedNode?: Node | null;
   onSelectionChange?: (node: Node | null) => void;
+  showSchematicPreview?: boolean;
 }
 
-// Custom node component for hardware modules
-function HardwareModuleNode({ data, selected }: { data: any; selected: boolean }) {
+interface PortData {
+  id: string;
+  label: string;
+  type: 'power' | 'data' | 'analog' | 'digital';
+  direction: 'input' | 'output';
+  voltage?: string;
+  current?: string;
+  protocol?: string;
+  compatible?: string[];
+}
+
+interface EnhancedNodeData {
+  label: string;
+  category: string;
+  status: 'validated' | 'error' | 'processing' | 'warning';
+  ports: PortData[];
+  moduleId?: string;
+  componentId?: string;
+  locked?: boolean;
+  grouped?: boolean;
+  groupId?: string;
+  specifications?: Record<string, any>;
+}
+
+// Enhanced Custom node component for hardware modules
+function HardwareModuleNode({ data, selected }: { data: EnhancedNodeData; selected: boolean }) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [dragPreview, setDragPreview] = useState<{ x: number; y: number } | null>(null);
+
   const getComponentIcon = (category: string) => {
     switch (category) {
       case 'microcontroller':
@@ -26,6 +58,14 @@ function HardwareModuleNode({ data, selected }: { data: any; selected: boolean }
         return '📶';
       case 'power':
         return '⚡';
+      case 'analog':
+        return '📊';
+      case 'digital':
+        return '🔢';
+      case 'memory':
+        return '💾';
+      case 'display':
+        return '🖥️';
       default:
         return '🔌';
     }
@@ -38,51 +78,194 @@ function HardwareModuleNode({ data, selected }: { data: any; selected: boolean }
       case 'error':
         return 'bg-red-500';
       case 'processing':
-        return 'bg-yellow-500 animate-pulse-gold';
+        return 'bg-yellow-500 animate-pulse';
+      case 'warning':
+        return 'bg-orange-500';
       default:
         return 'bg-secondary';
     }
   };
 
+  const getPortColor = (port: PortData) => {
+    switch (port.type) {
+      case 'power':
+        return 'bg-red-500 border-red-600';
+      case 'data':
+        return 'bg-blue-500 border-blue-600';
+      case 'analog':
+        return 'bg-green-500 border-green-600';
+      case 'digital':
+        return 'bg-purple-500 border-purple-600';
+      default:
+        return 'bg-gray-500 border-gray-600';
+    }
+  };
+
+  const isPortCompatible = (sourcePort: PortData, targetPort: PortData) => {
+    // Basic compatibility rules
+    if (sourcePort.type !== targetPort.type) return false;
+    if (sourcePort.direction === targetPort.direction) return false;
+    if (sourcePort.voltage && targetPort.voltage && sourcePort.voltage !== targetPort.voltage) return false;
+    return true;
+  };
+
   return (
-    <div 
-      className={`node rounded-lg p-4 w-48 ${selected ? 'ring-2 ring-primary' : ''}`}
-      data-testid={`canvas-node-${data.moduleId || data.componentId || 'unknown'}`}
-    >
-      <div className="flex items-center space-x-3 mb-3">
-        <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
-          <span className="text-primary text-sm">{getComponentIcon(data.category)}</span>
-        </div>
-        <div className="flex-1">
-          <h3 className="text-sm font-medium text-foreground">{data.label}</h3>
-          <p className="text-xs text-muted-foreground">{data.category}</p>
-        </div>
-        <div className={`w-3 h-3 rounded-full ${getStatusColor(data.status)}`} title={data.status || 'Unknown'}></div>
-      </div>
-      
-      {/* Node Ports */}
-      <div className="space-y-1">
-        {data.ports?.map((port: any, index: number) => (
-          <div key={port.id} className="flex justify-between items-center">
-            {port.direction === 'input' && (
-              <div className={`w-3 h-3 rounded-full cursor-pointer ${
-                port.type === 'power' ? 'bg-red-500' :
-                port.type === 'data' ? 'bg-accent' :
-                'bg-gray-500'
-              }`} />
-            )}
-            <span className="text-xs text-muted-foreground">{port.label}</span>
-            {port.direction === 'output' && (
-              <div className={`w-3 h-3 rounded-full cursor-pointer ${
-                port.type === 'power' ? 'bg-red-500' :
-                port.type === 'data' ? 'bg-accent' :
-                'bg-gray-500'
-              }`} />
-            )}
+    <TooltipProvider>
+      <Card 
+        className={`relative w-64 transition-all duration-200 ${
+          selected ? 'ring-2 ring-primary shadow-lg scale-105' : 'hover:shadow-md'
+        } ${
+          isHovered ? 'ring-1 ring-primary/50' : ''
+        } ${
+          data.locked ? 'opacity-75' : ''
+        }`}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        data-testid={`canvas-node-${data.moduleId || data.componentId || 'unknown'}`}
+      >
+        <CardContent className="p-4">
+          {/* Node Header */}
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="w-10 h-10 bg-primary/20 rounded-lg flex items-center justify-center relative">
+              <span className="text-primary text-lg">{getComponentIcon(data.category)}</span>
+              {data.locked && (
+                <Lock className="absolute -top-1 -right-1 w-3 h-3 text-muted-foreground" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-foreground truncate">{data.label}</h3>
+              <div className="flex items-center space-x-2">
+                <Badge variant="outline" className="text-xs">
+                  {data.category}
+                </Badge>
+                {data.grouped && (
+                  <Badge variant="secondary" className="text-xs">
+                    <Group className="w-2 h-2 mr-1" />
+                    Group
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <Tooltip>
+              <TooltipTrigger>
+                <div className={`w-4 h-4 rounded-full ${getStatusColor(data.status)} ring-2 ring-background`} />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="capitalize">{data.status}</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
-        ))}
-      </div>
-    </div>
+          
+          {/* Enhanced Ports */}
+          <div className="space-y-2">
+            {data.ports?.map((port: PortData, index: number) => (
+              <div key={port.id} className="relative">
+                <div className="flex justify-between items-center py-1">
+                  {port.direction === 'input' && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <div className={`w-4 h-4 rounded-full border-2 cursor-pointer transition-all hover:scale-110 ${
+                          getPortColor(port)
+                        }`}>
+                          <Handle
+                            type="target"
+                            position={Position.Left}
+                            id={port.id}
+                            className="!w-4 !h-4 !border-2 !rounded-full opacity-0"
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="left">
+                        <div className="text-xs">
+                          <p className="font-medium">{port.label}</p>
+                          <p className="text-muted-foreground">{port.type}</p>
+                          {port.voltage && <p>Voltage: {port.voltage}</p>}
+                          {port.protocol && <p>Protocol: {port.protocol}</p>}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  
+                  <div className="flex-1 px-2">
+                    <div className="flex items-center justify-center">
+                      <span className="text-xs font-medium text-center">{port.label}</span>
+                    </div>
+                    <div className="flex items-center justify-center">
+                      <span className="text-xs text-muted-foreground">
+                        {port.type} • {port.voltage || 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {port.direction === 'output' && (
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <div className={`w-4 h-4 rounded-full border-2 cursor-pointer transition-all hover:scale-110 ${
+                          getPortColor(port)
+                        }`}>
+                          <Handle
+                            type="source"
+                            position={Position.Right}
+                            id={port.id}
+                            className="!w-4 !h-4 !border-2 !rounded-full opacity-0"
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <div className="text-xs">
+                          <p className="font-medium">{port.label}</p>
+                          <p className="text-muted-foreground">{port.type}</p>
+                          {port.voltage && <p>Voltage: {port.voltage}</p>}
+                          {port.protocol && <p>Protocol: {port.protocol}</p>}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Node Actions (visible on hover/selection) */}
+          {(isHovered || selected) && (
+            <div className="absolute -top-2 -right-2 flex space-x-1">
+              {!data.locked && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-6 h-6 p-0 bg-background"
+                      data-testid={`button-copy-${data.moduleId}`}
+                    >
+                      <Copy className="w-3 h-3" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Duplicate</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-6 h-6 p-0 bg-background text-destructive hover:text-destructive"
+                    data-testid={`button-delete-${data.moduleId}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Delete</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </TooltipProvider>
   );
 }
 
@@ -90,18 +273,197 @@ const nodeTypes = {
   hardwareModule: HardwareModuleNode,
 };
 
-export default function ProjectCanvas({ project, selectedNode, onSelectionChange }: ProjectCanvasProps) {
+export default function ProjectCanvas({ project, selectedNode, onSelectionChange, showSchematicPreview = false }: ProjectCanvasProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const internalSelectedNode = selectedNode || null;
   const [showCoordinates, setShowCoordinates] = useState(false);
   const [enableSnapping, setEnableSnapping] = useState(true);
   const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
+  const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
+  const [canvasMode, setCanvasMode] = useState<'design' | 'schematic'>('design');
+  const [showGrid, setShowGrid] = useState(true);
+  const [connectionPreview, setConnectionPreview] = useState<Connection | null>(null);
+  const { toast } = useToast();
 
-  const { sendMessage, lastMessage, connectionStatus } = useWebSocket();
+  // Make WebSocket connection optional to prevent crashes
+  let sendMessage: any, lastMessage: any, connectionStatus: any;
+  try {
+    const webSocketHook = useWebSocket();
+    sendMessage = webSocketHook.sendMessage;
+    lastMessage = webSocketHook.lastMessage;
+    connectionStatus = webSocketHook.connectionStatus;
+  } catch (error) {
+    console.warn('WebSocket connection failed, continuing without real-time features:', error);
+    sendMessage = () => false;
+    lastMessage = null;
+    connectionStatus = 'Disconnected';
+  }
+
+  // Enhanced canvas tools
+  const alignNodes = useCallback((alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+    if (selectedNodes.length < 2) {
+      toast({
+        title: "Alignment requires selection",
+        description: "Please select at least 2 nodes to align",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const bounds = selectedNodes.reduce((acc, node) => {
+      return {
+        minX: Math.min(acc.minX, node.position.x),
+        maxX: Math.max(acc.maxX, node.position.x + (node.width || 256)),
+        minY: Math.min(acc.minY, node.position.y),
+        maxY: Math.max(acc.maxY, node.position.y + (node.height || 120)),
+      };
+    }, { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
+    
+    const updatedNodes = selectedNodes.map(node => {
+      let newPosition = { ...node.position };
+      
+      switch (alignment) {
+        case 'left':
+          newPosition.x = bounds.minX;
+          break;
+        case 'center':
+          newPosition.x = (bounds.minX + bounds.maxX) / 2 - (node.width || 256) / 2;
+          break;
+        case 'right':
+          newPosition.x = bounds.maxX - (node.width || 256);
+          break;
+        case 'top':
+          newPosition.y = bounds.minY;
+          break;
+        case 'middle':
+          newPosition.y = (bounds.minY + bounds.maxY) / 2 - (node.height || 120) / 2;
+          break;
+        case 'bottom':
+          newPosition.y = bounds.maxY - (node.height || 120);
+          break;
+      }
+      
+      return { ...node, position: newPosition };
+    });
+    
+    setNodes(nodes => nodes.map(node => {
+      const updated = updatedNodes.find(n => n.id === node.id);
+      return updated || node;
+    }));
+    
+    toast({
+      title: "Nodes aligned",
+      description: `${selectedNodes.length} nodes aligned to ${alignment}`,
+    });
+  }, [selectedNodes, setNodes, toast]);
+  
+  const groupSelectedNodes = useCallback(() => {
+    if (selectedNodes.length < 2) {
+      toast({
+        title: "Grouping requires selection",
+        description: "Please select at least 2 nodes to group",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const groupId = `group_${Date.now()}`;
+    setNodes(nodes => nodes.map(node => {
+      if (selectedNodes.some(selected => selected.id === node.id)) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            grouped: true,
+            groupId,
+          }
+        };
+      }
+      return node;
+    }));
+    
+    toast({
+      title: "Nodes grouped",
+      description: `${selectedNodes.length} nodes grouped together`,
+    });
+  }, [selectedNodes, setNodes, toast]);
+  
+  // Validate connection compatibility
+  const isValidConnection = useCallback((connection: Connection) => {
+    const sourceNode = nodes.find(n => n.id === connection.source);
+    const targetNode = nodes.find(n => n.id === connection.target);
+    
+    if (!sourceNode || !targetNode) return false;
+    
+    const sourcePort = (sourceNode.data as EnhancedNodeData).ports?.find((p: PortData) => p.id === connection.sourceHandle);
+    const targetPort = (targetNode.data as EnhancedNodeData).ports?.find((p: PortData) => p.id === connection.targetHandle);
+    
+    if (!sourcePort || !targetPort) return false;
+    
+    // Check basic compatibility
+    if (sourcePort.type !== targetPort.type) return false;
+    if (sourcePort.direction === targetPort.direction) return false;
+    if (sourcePort.voltage && targetPort.voltage && sourcePort.voltage !== targetPort.voltage) return false;
+    
+    return true;
+  }, [nodes]);
 
   // Control functions - React Flow instance state
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  
+  // Enhanced connection handling
+  const onConnect = useCallback((params: Connection) => {
+    if (!isValidConnection(params)) {
+      toast({
+        title: "Invalid connection",
+        description: "These ports are not compatible. Check voltage levels and port types.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const newEdge: Edge = {
+      ...params,
+      id: `edge_${Date.now()}`,
+      type: 'smoothstep',
+      animated: params.sourceHandle?.includes('data') || params.targetHandle?.includes('data'),
+      style: {
+        stroke: params.sourceHandle?.includes('power') ? '#ef4444' : 
+                params.sourceHandle?.includes('data') ? '#3b82f6' :
+                params.sourceHandle?.includes('analog') ? '#10b981' : '#8b5cf6',
+        strokeWidth: 3,
+      },
+      markerEnd: {
+        type: 'arrowclosed',
+        color: params.sourceHandle?.includes('power') ? '#ef4444' : 
+               params.sourceHandle?.includes('data') ? '#3b82f6' :
+               params.sourceHandle?.includes('analog') ? '#10b981' : '#8b5cf6',
+      },
+    };
+    
+    setEdges((eds) => addEdge(newEdge, eds));
+    
+    // Persist to database
+    createConnectionMutation.mutate(params);
+    
+    // Broadcast the connection to other users (only if WebSocket is available)
+    try {
+      sendMessage({
+        type: 'canvas_update',
+        action: 'connection_created',
+        data: params,
+        projectId: project.id,
+      });
+    } catch (e) {
+      console.warn('Failed to broadcast connection update:', e);
+    }
+    
+    toast({
+      title: "Connection created",
+      description: "Components successfully connected",
+    });
+  }, [setEdges, isValidConnection, toast, createConnectionMutation, sendMessage, project.id]);
 
   // Grid snapping utility (kept for potential future use)
   const snapToGrid = useCallback((position: { x: number; y: number }, gridSize = 20): { x: number; y: number } => {
@@ -184,10 +546,12 @@ export default function ProjectCanvas({ project, selectedNode, onSelectionChange
           category: module.component?.category,
           status: 'validated', // Would come from validation
           ports: [
-            { id: 'gpio0', label: 'GPIO0', type: 'data', direction: 'output' },
-            { id: 'gpio2', label: 'GPIO2', type: 'data', direction: 'output' },
-            { id: '3v3', label: '3.3V', type: 'power', direction: 'output' },
-            { id: 'gnd', label: 'GND', type: 'power', direction: 'output' },
+            { id: 'gpio0', label: 'GPIO0', type: 'digital', direction: 'output', voltage: '3.3V', protocol: 'GPIO' },
+            { id: 'gpio2', label: 'GPIO2', type: 'digital', direction: 'input', voltage: '3.3V', protocol: 'GPIO' },
+            { id: 'sda', label: 'SDA', type: 'data', direction: 'output', voltage: '3.3V', protocol: 'I2C' },
+            { id: 'scl', label: 'SCL', type: 'data', direction: 'output', voltage: '3.3V', protocol: 'I2C' },
+            { id: '3v3', label: '3.3V', type: 'power', direction: 'output', voltage: '3.3V', current: '800mA' },
+            { id: 'gnd', label: 'GND', type: 'power', direction: 'output', voltage: '0V' },
           ],
           moduleId: module.id,
           componentId: module.componentId,
@@ -267,27 +631,6 @@ export default function ProjectCanvas({ project, selectedNode, onSelectionChange
     },
   });
 
-  const onConnect = useCallback(
-    (params: Connection) => {
-      setEdges((eds) => addEdge({
-        ...params,
-        type: 'smoothstep',
-        animated: true,
-        style: { stroke: '#00bfff', strokeWidth: 2 },
-      }, eds));
-      
-      createConnectionMutation.mutate(params);
-
-      // Broadcast the connection to other users
-      sendMessage({
-        type: 'canvas_update',
-        action: 'connection_created',
-        data: params,
-        projectId: project.id,
-      });
-    },
-    [setEdges, createConnectionMutation, sendMessage, project.id]
-  );
 
   // Remove custom drag snapping to avoid redundancy with React Flow's built-in snapping
 
@@ -301,13 +644,17 @@ export default function ProjectCanvas({ project, selectedNode, onSelectionChange
         });
       }
 
-      // Broadcast the final position to other users
-      sendMessage({
-        type: 'canvas_update',
-        action: 'node_moved',
-        data: { nodeId: node.id, position: node.position },
-        projectId: project.id,
-      });
+      // Broadcast the final position to other users (only if WebSocket is available)
+      try {
+        sendMessage({
+          type: 'canvas_update',
+          action: 'node_moved',
+          data: { nodeId: node.id, position: node.position },
+          projectId: project.id,
+        });
+      } catch (e) {
+        console.warn('Failed to broadcast node position update:', e);
+      }
     },
     [updateModulePositionMutation, sendMessage, project.id]
   );
@@ -315,6 +662,7 @@ export default function ProjectCanvas({ project, selectedNode, onSelectionChange
   const handleSelectionChange = useCallback(
     ({ nodes: selectedNodes }: { nodes: Node[] }) => {
       const newSelection = selectedNodes[0] || null;
+      setSelectedNodes(selectedNodes);
       onSelectionChange?.(newSelection);
     },
     [onSelectionChange]
@@ -381,10 +729,12 @@ export default function ProjectCanvas({ project, selectedNode, onSelectionChange
           category: draggedComponent.category,
           status: 'validated',
           ports: [
-            { id: 'gpio0', label: 'GPIO0', type: 'data', direction: 'output' },
-            { id: 'gpio2', label: 'GPIO2', type: 'data', direction: 'output' },
-            { id: '3v3', label: '3.3V', type: 'power', direction: 'output' },
-            { id: 'gnd', label: 'GND', type: 'power', direction: 'output' },
+            { id: 'gpio0', label: 'GPIO0', type: 'digital', direction: 'output', voltage: '3.3V', protocol: 'GPIO' },
+            { id: 'gpio2', label: 'GPIO2', type: 'digital', direction: 'input', voltage: '3.3V', protocol: 'GPIO' },
+            { id: 'sda', label: 'SDA', type: 'data', direction: 'output', voltage: '3.3V', protocol: 'I2C' },
+            { id: 'scl', label: 'SCL', type: 'data', direction: 'output', voltage: '3.3V', protocol: 'I2C' },
+            { id: '3v3', label: '3.3V', type: 'power', direction: 'output', voltage: '3.3V', current: '800mA' },
+            { id: 'gnd', label: 'GND', type: 'power', direction: 'output', voltage: '0V' },
           ],
           moduleId: newNodeId, // Will be updated after creation
           componentId: draggedComponent.id,
