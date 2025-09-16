@@ -201,7 +201,7 @@ export default function ComponentLibrary() {
   }, {} as Record<string, Component[]>) || {};
 
   return (
-    <aside className="w-80 bg-card border-r border-border flex flex-col" data-testid="component-library">
+    <aside className="w-80 bg-card border-r border-border flex flex-col relative z-10" data-testid="component-library">
       <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold text-foreground">Component Library</h2>

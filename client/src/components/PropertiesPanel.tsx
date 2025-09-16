@@ -20,7 +20,7 @@ export default function PropertiesPanel({ project, selectedNode }: PropertiesPan
   const [selectedTab, setSelectedTab] = useState("properties");
 
   return (
-    <aside className="w-96 bg-card border-l border-border flex flex-col" data-testid="properties-panel">
+    <aside className="w-96 bg-card border-l border-border flex flex-col relative z-10" data-testid="properties-panel">
       <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex flex-col h-full">
         {/* Tabs Navigation */}
         <div className="border-b border-border">
