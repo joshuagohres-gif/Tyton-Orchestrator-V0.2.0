@@ -85,7 +85,7 @@ export default function SchematicDiagram({ project }: SchematicDiagramProps) {
     }
 
     return (
-      <svg width="100%" height="300" viewBox="0 0 350 300" className="bg-background rounded border border-border">
+      <svg width="100%" height="300" viewBox="0 0 350 300" className="bg-card rounded border border-border">
         {/* Background grid */}
         <defs>
           <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
