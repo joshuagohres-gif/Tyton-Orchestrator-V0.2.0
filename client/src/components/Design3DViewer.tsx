@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import * as THREE from "three";
+import { BufferGeometry, Float32BufferAttribute, BoxGeometry, Mesh } from "three";
 
 interface Design3DViewerProps {
   project: ProjectWithModules;
@@ -70,13 +70,13 @@ function MechanicalMesh({ component, selected, onClick }: {
   selected: boolean;
   onClick: () => void;
 }) {
-  const meshRef = useRef<THREE.Mesh>(null);
+  const meshRef = useRef<Mesh>(null);
   const color = componentColors[component.type] || '#6b7280';
   
   // Create geometry from CAD data if available
   const geometry = useMemo(() => {
     if (component.geometry && component.geometry.vertices.length > 0) {
-      const geo = new THREE.BufferGeometry();
+      const geo = new BufferGeometry();
       
       // Convert vertices to Float32Array
       const vertices: number[] = [];
@@ -90,7 +90,7 @@ function MechanicalMesh({ component, selected, onClick }: {
         indices.push(...face.vertices);
       });
       
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geo.setAttribute('position', new Float32BufferAttribute(vertices, 3));
       geo.setIndex(indices);
       geo.computeVertexNormals();
       
@@ -98,7 +98,7 @@ function MechanicalMesh({ component, selected, onClick }: {
     }
     
     // Fallback to box geometry
-    return new THREE.BoxGeometry(
+    return new BoxGeometry(
       component.dimensions.length / 100,
       component.dimensions.height / 100,
       component.dimensions.width / 100
