@@ -8,15 +8,24 @@ import { generateKiCadFiles, generateBOM } from "./services/eda";
 import { generateCADModel, exportSTL, exportSTEP, type CADParameters } from "./services/cad";
 import { insertProjectSchema, insertProjectModuleSchema, insertProjectConnectionSchema, type Component, type ParametricData } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { authenticateJWT, optionalAuth } from "./auth";
+import authRoutes from "./authRoutes";
+import { aiRateLimit, projectCreationRateLimit } from "./rateLimiter";
+import { logger } from "./logger";
+import { monitoring, trackingMiddleware } from "./monitoring";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Mock user for demo (in real app, this would come from authentication)
-  const MOCK_USER_ID = "550e8400-e29b-41d4-a716-446655440000";
+  // Add request tracking middleware
+  app.use("/api", trackingMiddleware);
 
-  // Projects
-  app.get("/api/projects", async (req, res) => {
+  // Register authentication routes
+  app.use("/api/auth", authRoutes);
+
+  // Projects - Require authentication
+  app.get("/api/projects", authenticateJWT, async (req: any, res) => {
     try {
-      const projects = await storage.getProjectsByUser(MOCK_USER_ID);
+      const userId = req.user.id;
+      const projects = await storage.getProjectsByUser(userId);
       res.json(projects);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch projects" });
@@ -45,11 +54,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/projects", async (req, res) => {
+  app.post("/api/projects", authenticateJWT, projectCreationRateLimit, async (req: any, res) => {
     try {
       const validation = insertProjectSchema.safeParse({
         ...req.body,
-        userId: MOCK_USER_ID
+        userId: req.user.id
       });
       
       if (!validation.success) {
@@ -63,7 +72,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/projects/:id", async (req, res) => {
+  app.put("/api/projects/:id", authenticateJWT, async (req: any, res) => {
     try {
       const project = await storage.updateProject(req.params.id, req.body);
       res.json(project);
@@ -72,7 +81,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/projects/:id", async (req, res) => {
+  app.delete("/api/projects/:id", authenticateJWT, async (req: any, res) => {
     try {
       await storage.deleteProject(req.params.id);
       res.status(204).send();
@@ -474,33 +483,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Health endpoints
-  app.get("/api/health/live", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  app.get("/api/health/live", async (req, res) => {
+    const liveness = await monitoring.getLivenessCheck();
+    res.json(liveness);
   });
 
   app.get("/api/health/ready", async (req, res) => {
     try {
-      // Check database connectivity
-      await storage.getUser("health-check");
-      res.json({ 
-        status: "ready", 
-        services: {
-          database: "healthy",
-          openai: process.env.OPENAI_API_KEY ? "configured" : "missing"
-        }
-      });
+      const healthStatus = await monitoring.getHealthStatus();
+
+      if (healthStatus.status === "healthy") {
+        res.json(healthStatus);
+      } else {
+        res.status(503).json(healthStatus);
+      }
     } catch (error) {
-      res.status(503).json({ 
-        status: "not ready", 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      logger.error("Health check failed", {}, error instanceof Error ? error : new Error(String(error)));
+      res.status(503).json({
+        status: "unhealthy",
+        error: error instanceof Error ? error.message : "Health check failed"
       });
+    }
+  });
+
+  // Performance metrics endpoint (admin only in production)
+  app.get("/api/metrics", async (req, res) => {
+    try {
+      const metrics = monitoring.getPerformanceMetrics();
+      res.json(metrics);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get metrics" });
     }
   });
 
   const httpServer = createServer(app);
 
   // Custom Module Designer API
-  app.post("/api/modules/design", async (req, res) => {
+  app.post("/api/modules/design", authenticateJWT, aiRateLimit, async (req: any, res) => {
     try {
       const { name, description, category, specifications, pinCount, package: packageType, features } = req.body;
       

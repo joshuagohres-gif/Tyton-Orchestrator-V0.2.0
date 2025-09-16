@@ -1,9 +1,10 @@
 import OpenAI from "openai";
 import { z } from "zod";
+import { openAIConfig } from "../config";
 
-// Using the latest available OpenAI model
-const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "" 
+// Initialize OpenAI with validated configuration
+const openai = new OpenAI({
+  apiKey: openAIConfig.apiKey
 });
 
 // ===== ZOD SCHEMAS FOR VALIDATION =====

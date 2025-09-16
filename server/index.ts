@@ -1,10 +1,30 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { config, serverConfig } from "./config";
+import passport from "./auth";
+import { logger, requestIdMiddleware, requestLogMiddleware, errorLogMiddleware } from "./logger";
+import { generalRateLimit } from "./rateLimiter";
+import { initializeApplication } from "./startup";
 
 const app = express();
+
+// Trust proxy for rate limiting
+app.set("trust proxy", 1);
+
+// Request ID and logging middleware
+app.use(requestIdMiddleware);
+app.use(requestLogMiddleware);
+
+// Rate limiting
+app.use("/api", generalRateLimit);
+
+// Body parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Initialize Passport
+app.use(passport.initialize());
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -37,35 +57,53 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const server = await registerRoutes(app);
+  try {
+    // Initialize application (migrations, seeding, etc.)
+    await initializeApplication();
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    const server = await registerRoutes(app);
 
-    res.status(status).json({ message });
-    throw err;
-  });
+    // Error logging middleware
+    app.use(errorLogMiddleware);
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+    // Global error handler
+    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+
+      logger.error("Unhandled server error", {
+        status,
+        message,
+        stack: err.stack,
+      }, err);
+
+      res.status(status).json({
+        error: config.NODE_ENV === "production" ? "Internal Server Error" : message
+      });
+    });
+
+    // importantly only setup vite in development and after
+    // setting up all the other routes so the catch-all route
+    // doesn't interfere with the other routes
+    if (config.NODE_ENV === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
+    }
+
+    // Use configuration from validated environment
+    server.listen({
+      port: serverConfig.port,
+      host: serverConfig.host,
+      reusePort: true,
+    }, () => {
+      logger.info(`🚀 Server running in ${config.NODE_ENV} mode on port ${serverConfig.port}`);
+      if (config.ENABLE_MOCK_DATA) {
+        logger.warn("⚠️  Mock data mode enabled");
+      }
+    });
+  } catch (error) {
+    logger.error("💥 Failed to start server", {}, error instanceof Error ? error : new Error(String(error)));
+    process.exit(1);
   }
-
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
 })();
