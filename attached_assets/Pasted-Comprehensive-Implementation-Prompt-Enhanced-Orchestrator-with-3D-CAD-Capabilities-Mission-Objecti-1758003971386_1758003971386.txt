@@ -1,0 +1,304 @@
+Comprehensive Implementation Prompt: Enhanced Orchestrator with 3D CAD Capabilities
+Mission Objective
+Implement an enhanced orchestrator system for Tyton Orchestrator that improves circuit diagram accuracy and adds 3D CAD design capabilities for electronics housings and mechanical components. The system should support user-guided design with AI assistance, export to STEP/STL formats, and include clearance validation.
+
+Implementation Instructions
+Stage 1: Database Schema Extension [Priority: Critical]
+Task 1.1: Extend Module Schema
+
+// In shared/schema.ts, add to modules table:
+moduleType: varchar("module_type", { length: 20 }).default('electrical'), // 'electrical' | 'mechanical' | 'hybrid'
+mechanicalProperties: jsonb("mechanical_properties"), // Stores dimensions, mounting points, material specs
+cadModel: jsonb("cad_model"), // Stores parametric definitions and export references
+// Add new mechanicalComponents table:
+export const mechanicalComponents = pgTable("mechanical_components", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => projects.id),
+  componentType: varchar("component_type", { length: 50 }).notNull(), // 'housing' | 'bracket' | 'heatsink'
+  parametricData: jsonb("parametric_data").notNull(), // Points, curves, segments
+  dimensions: jsonb("dimensions").notNull(), // {length, width, height}
+  material: varchar("material", { length: 50 }),
+  manufacturingMethod: varchar("manufacturing_method", { length: 20 }), // '3D_PRINT' | 'CNC'
+  clearanceClass: varchar("clearance_class", { length: 20 }), // 'LOOSE' | 'NORMAL' | 'CLOSE'
+  thermalRating: integer("thermal_rating"), // watts
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+Run npm run db:push --force after schema changes.
+
+Stage 2: Create 3D Design Tab UI [Priority: High]
+Task 2.1: Create 3D Viewer Component
+Create client/src/components/Design3DViewer.tsx:
+
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Grid, Box } from '@react-three/drei';
+interface Design3DViewerProps {
+  project: ProjectWithModules;
+  mechanicalComponents: MechanicalComponent[];
+  onParameterChange: (componentId: string, parameters: any) => void;
+}
+export default function Design3DViewer({ project, mechanicalComponents, onParameterChange }: Design3DViewerProps) {
+  // Implement Three.js canvas with:
+  // - Interactive 3D viewport using @react-three/fiber
+  // - OrbitControls for camera manipulation
+  // - Grid helper for spatial reference
+  // - Render mechanicalComponents as 3D objects
+  // - Click/hover interactions for component selection
+}
+Task 2.2: Add 3D Design Tab to Project Page
+Modify client/src/pages/project.tsx:
+
+// Add new tab alongside Canvas and Schematic
+const [activeTab, setActiveTab] = useState<'canvas' | '3d-design' | 'schematic'>('canvas');
+// Add tab switcher UI:
+<div className="flex space-x-2 border-b">
+  <Button onClick={() => setActiveTab('canvas')} variant={activeTab === 'canvas' ? 'default' : 'ghost'}>
+    Canvas
+  </Button>
+  <Button onClick={() => setActiveTab('3d-design')} variant={activeTab === '3d-design' ? 'default' : 'ghost'}>
+    3D Design
+  </Button>
+  <Button onClick={() => setActiveTab('schematic')} variant={activeTab === 'schematic' ? 'default' : 'ghost'}>
+    Schematic
+  </Button>
+</div>
+// Conditional rendering based on activeTab
+{activeTab === '3d-design' && <Design3DViewer project={project} />}
+Stage 3: Implement Parametric CAD Generation [Priority: Critical]
+Task 3.1: Create CAD Generation Service
+Create server/services/cadGenerator.ts:
+
+interface ParametricHousingParams {
+  pcbDimensions: { length: number; width: number; thickness: number };
+  componentHeights: Map<string, number>;
+  clearanceClass: 'LOOSE' | 'NORMAL' | 'CLOSE';
+  material: string;
+  manufacturingMethod: '3D_PRINT' | 'CNC';
+}
+export class CADGenerator {
+  generateHousing(params: ParametricHousingParams) {
+    // Step 1: Calculate base dimensions with clearances
+    const clearance = this.getClearanceValue(params.clearanceClass);
+    const internalDimensions = {
+      length: params.pcbDimensions.length + (clearance * 2),
+      width: params.pcbDimensions.width + (clearance * 2),
+      height: Math.max(...params.componentHeights.values()) + clearance + 5 // 5mm top clearance
+    };
+    
+    // Step 2: Generate parametric points
+    const basePoints = this.generateBoundaryPoints(internalDimensions);
+    
+    // Step 3: Create curve equations for smooth edges
+    const curves = this.generateCurves(basePoints, params.manufacturingMethod);
+    
+    // Step 4: Build segments (walls, top, bottom)
+    const segments = {
+      bottom: this.generateBottomPlate(basePoints, params.pcbDimensions),
+      walls: this.generateWalls(internalDimensions, params.material),
+      top: this.generateLid(basePoints),
+      mountingBosses: this.generateMountingPoints(params.pcbDimensions)
+    };
+    
+    return { basePoints, curves, segments, internalDimensions };
+  }
+  
+  generateBracket(loadPoint: Point3D, material: string) {
+    // Generate simple L-bracket with mounting holes
+  }
+  
+  generateBasicHeatsink(heatSource: HeatSource, dissipationReq: number) {
+    // Generate fin array based on thermal requirements
+  }
+  
+  private getClearanceValue(clearanceClass: string): number {
+    // ISO 286 fit classifications in mm
+    switch(clearanceClass) {
+      case 'LOOSE': return 2.0;    // H11/h11
+      case 'NORMAL': return 1.0;   // H8/h7
+      case 'CLOSE': return 0.5;    // H7/h6
+      default: return 1.0;
+    }
+  }
+}
+Task 3.2: Create AI Design Assistant
+Create server/services/designAssistant.ts:
+
+export class DesignAssistant {
+  async suggestParameters(requirements: DesignRequirements): Promise<SuggestedParams> {
+    // Use OpenAI to suggest optimal parameters
+    const prompt = `
+      Given these electronics housing requirements:
+      - PCB dimensions: ${requirements.pcbDimensions}
+      - Components: ${requirements.componentList}
+      - Manufacturing: ${requirements.manufacturingMethod}
+      - Thermal load: ${requirements.thermalLoad}W
+      
+      Suggest optimal housing parameters including:
+      1. Wall thickness for ${requirements.manufacturingMethod}
+      2. Ventilation pattern and area
+      3. Mounting strategy
+      4. Material selection
+      5. Clearance classifications
+    `;
+    
+    // Call OpenAI API and parse response into structured parameters
+    return parsedSuggestions;
+  }
+  
+  validateClearances(model: CADModel): ValidationResult {
+    // Check all clearances meet specifications
+    // Return warnings/errors if issues found
+  }
+}
+Stage 4: Implement Export Capabilities [Priority: High]
+Task 4.1: STL Export
+Create server/services/exporters/stlExporter.ts:
+
+export class STLExporter {
+  exportToSTL(cadModel: CADModel, resolution: 'low' | 'medium' | 'high'): Buffer {
+    // Convert parametric model to triangle mesh
+    const mesh = this.tesselateModel(cadModel, resolution);
+    
+    // Generate STL binary format
+    const stlBuffer = this.generateSTLBinary(mesh);
+    
+    return stlBuffer;
+  }
+  
+  private tesselateModel(model: CADModel, resolution: string): TriangleMesh {
+    // Convert curves and surfaces to triangles
+    const triangleCount = resolution === 'high' ? 10000 : resolution === 'medium' ? 5000 : 1000;
+    // Tesselation algorithm implementation
+  }
+}
+Task 4.2: STEP Export (Placeholder)
+Create server/services/exporters/stepExporter.ts:
+
+export class STEPExporter {
+  async exportToSTEP(cadModel: CADModel): Promise<Buffer> {
+    // Note: Full STEP export requires OpenCASCADE
+    // For now, create a simplified STEP structure
+    
+    // Generate STEP header
+    const header = this.generateSTEPHeader();
+    
+    // Convert parametric data to STEP entities
+    const entities = this.convertToSTEPEntities(cadModel);
+    
+    // Combine into STEP file
+    return Buffer.from(header + entities);
+  }
+}
+Stage 5: Enhanced Orchestration Pipeline [Priority: Critical]
+Task 5.1: Update Orchestration Service
+Modify server/services/orchestrationService.ts:
+
+// Add mechanical design stage to orchestration
+async executeMechanicalDesign(projectId: string, electricalDesign: any) {
+  const cadGenerator = new CADGenerator();
+  const designAssistant = new DesignAssistant();
+  
+  // Get PCB dimensions from electrical design
+  const pcbData = this.extractPCBData(electricalDesign);
+  
+  // Get AI suggestions for housing parameters
+  const suggestions = await designAssistant.suggestParameters({
+    pcbDimensions: pcbData.dimensions,
+    componentList: pcbData.components,
+    manufacturingMethod: '3D_PRINT', // User preference
+    thermalLoad: pcbData.totalPowerDissipation
+  });
+  
+  // Generate housing with user-guided parameters
+  const housing = cadGenerator.generateHousing({
+    pcbDimensions: pcbData.dimensions,
+    componentHeights: pcbData.componentHeights,
+    clearanceClass: suggestions.clearanceClass,
+    material: suggestions.material,
+    manufacturingMethod: suggestions.manufacturingMethod
+  });
+  
+  // Validate clearances
+  const validation = designAssistant.validateClearances(housing);
+  
+  // Store in database
+  await this.storage.createMechanicalComponent({
+    projectId,
+    componentType: 'housing',
+    parametricData: housing,
+    dimensions: housing.internalDimensions,
+    material: suggestions.material,
+    manufacturingMethod: suggestions.manufacturingMethod,
+    clearanceClass: suggestions.clearanceClass
+  });
+  
+  return { housing, validation, suggestions };
+}
+Stage 6: API Routes [Priority: High]
+Task 6.1: Add Mechanical Design Routes
+Add to server/routes.ts:
+
+// Get mechanical components for project
+app.get("/api/projects/:projectId/mechanical", async (req, res) => {
+  const components = await storage.getMechanicalComponents(req.params.projectId);
+  res.json(components);
+});
+// Generate mechanical design
+app.post("/api/projects/:projectId/mechanical/generate", async (req, res) => {
+  const { pcbData, requirements } = req.body;
+  const result = await orchestrationService.executeMechanicalDesign(
+    req.params.projectId, 
+    pcbData
+  );
+  res.json(result);
+});
+// Export CAD model
+app.post("/api/projects/:projectId/mechanical/:componentId/export", async (req, res) => {
+  const { format } = req.body; // 'STL' or 'STEP'
+  const component = await storage.getMechanicalComponent(req.params.componentId);
+  
+  let exportBuffer;
+  if (format === 'STL') {
+    const exporter = new STLExporter();
+    exportBuffer = exporter.exportToSTL(component.parametricData, 'medium');
+  } else {
+    const exporter = new STEPExporter();
+    exportBuffer = await exporter.exportToSTEP(component.parametricData);
+  }
+  
+  res.setHeader('Content-Type', format === 'STL' ? 'model/stl' : 'model/step');
+  res.send(exportBuffer);
+});
+Stage 7: Testing Requirements [Priority: High]
+Test Plan:
+
+Create a project with electrical components
+Navigate to 3D Design tab
+Generate housing with AI suggestions
+Verify clearances are correct
+Export to STL and verify file is valid
+Test thermal warnings for high-power components
+Validate bracket generation
+Test user parameter adjustments
+Required Packages to Install
+npm install three @react-three/fiber @react-three/drei
+npm install jscad @jscad/modeling @jscad/io
+Success Criteria
+✅ 3D Design tab displays and is interactive
+✅ Housing generation creates valid parametric models
+✅ Clearance validation works with ISO 286 standards
+✅ STL export produces valid 3D printable files
+✅ AI assistant provides reasonable design suggestions
+✅ Thermal warnings appear for poor designs
+✅ Brackets and basic heatsinks generate correctly
+✅ Database properly stores mechanical components
+Implementation Order
+First: Extend database schema and run migrations
+Second: Create basic 3D viewer component and tab
+Third: Implement CAD generation service with parametric modeling
+Fourth: Add API routes for mechanical operations
+Fifth: Implement STL export functionality
+Sixth: Add AI design assistant
+Seventh: Implement validation and warnings
+Eighth: Test complete workflow end-to-end
+IMPORTANT: Focus on working functionality over perfection. Start with simple box enclosures and iteratively add complexity. Ensure each stage works before moving to the next.

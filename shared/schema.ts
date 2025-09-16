@@ -4,6 +4,78 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// TypeScript interfaces for jsonb fields
+export interface MechanicalProperties {
+  dimensions?: {
+    length: number;
+    width: number;
+    height: number;
+    unit: 'mm' | 'cm' | 'inch';
+  };
+  mountingPoints?: Array<{
+    x: number;
+    y: number;
+    z?: number;
+    diameter: number;
+    type: 'hole' | 'standoff' | 'slot';
+  }>;
+  material?: {
+    type: string;
+    density?: number;
+    thermalConductivity?: number;
+    color?: string;
+  };
+  weight?: number;
+  tolerances?: {
+    dimensional: number;
+    angular?: number;
+  };
+}
+
+export interface CADModel {
+  format?: 'STEP' | 'STL' | 'OBJ' | 'FBX' | 'GLTF';
+  fileUrl?: string;
+  thumbnailUrl?: string;
+  parametricDefinition?: {
+    baseShape?: string;
+    operations?: Array<any>;
+    constraints?: Array<any>;
+  };
+  exportSettings?: {
+    resolution?: 'low' | 'medium' | 'high';
+    format?: string;
+    units?: string;
+  };
+  lastModified?: string;
+  version?: string;
+}
+
+export interface ParametricData {
+  points?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    z?: number;
+    type?: 'control' | 'anchor' | 'reference';
+  }>;
+  curves?: Array<{
+    id: string;
+    type: 'line' | 'arc' | 'bezier' | 'spline';
+    points: string[]; // IDs of points
+    parameters?: any;
+  }>;
+  segments?: Array<{
+    id: string;
+    curveIds: string[];
+    closed?: boolean;
+  }>;
+  features?: Array<{
+    id: string;
+    type: 'extrude' | 'revolve' | 'loft' | 'sweep' | 'fillet' | 'chamfer';
+    parameters: any;
+  }>;
+}
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
@@ -52,6 +124,9 @@ export const projectModules = pgTable("project_modules", {
   firmwareLanguage: text("firmware_language"), // cpp, c, python, verilog, vhdl
   firmwarePlatform: text("firmware_platform"), // ESP32, Arduino, STM32, RP2040, etc.
   testingCode: text("testing_code"),
+  moduleType: varchar("module_type", { length: 20 }).default('electrical'), // 'electrical' | 'mechanical' | 'hybrid'
+  mechanicalProperties: jsonb("mechanical_properties").$type<MechanicalProperties>(),
+  cadModel: jsonb("cad_model").$type<CADModel>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -115,6 +190,21 @@ export const auditLogs = pgTable("audit_logs", {
   entityId: text("entity_id"),
   changes: jsonb("changes").default({}),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
+// Mechanical Components table for 3D CAD functionality
+export const mechanicalComponents = pgTable("mechanical_components", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  componentType: varchar("component_type", { length: 50 }).notNull(), // 'housing' | 'bracket' | 'heatsink'
+  parametricData: jsonb("parametric_data").notNull().$type<ParametricData>(),
+  dimensions: jsonb("dimensions").notNull(), // {length, width, height}
+  material: varchar("material", { length: 50 }),
+  manufacturingMethod: varchar("manufacturing_method", { length: 20 }), // '3D_PRINT' | 'CNC'
+  clearanceClass: varchar("clearance_class", { length: 20 }), // 'LOOSE' | 'NORMAL' | 'CLOSE'
+  thermalRating: integer("thermal_rating"), // watts
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Collaboration Tables
@@ -228,6 +318,13 @@ export const bomItemsRelations = relations(bomItems, ({ one }) => ({
   }),
 }));
 
+export const mechanicalComponentsRelations = relations(mechanicalComponents, ({ one }) => ({
+  project: one(projects, {
+    fields: [mechanicalComponents.projectId],
+    references: [projects.id],
+  }),
+}));
+
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   project: one(projects, {
     fields: [auditLogs.projectId],
@@ -275,6 +372,9 @@ export const insertProjectModuleSchema = createInsertSchema(projectModules).pick
   configuration: true,
   firmwareCode: true,
   testingCode: true,
+  moduleType: true,
+  mechanicalProperties: true,
+  cadModel: true,
 });
 
 export const insertProjectConnectionSchema = createInsertSchema(projectConnections).pick({
@@ -420,6 +520,17 @@ export const insertStageRunSchema = createInsertSchema(stageRuns).pick({
   stageDefinitionId: true,
 });
 
+export const insertMechanicalComponentSchema = createInsertSchema(mechanicalComponents).pick({
+  projectId: true,
+  componentType: true,
+  parametricData: true,
+  dimensions: true,
+  material: true,
+  manufacturingMethod: true,
+  clearanceClass: true,
+  thermalRating: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -436,6 +547,8 @@ export type OrchestratorRun = typeof orchestratorRuns.$inferSelect;
 export type StageRun = typeof stageRuns.$inferSelect;
 export type BomItem = typeof bomItems.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertMechanicalComponent = z.infer<typeof insertMechanicalComponentSchema>;
+export type MechanicalComponent = typeof mechanicalComponents.$inferSelect;
 
 // Enhanced pipeline types
 export type InsertPipelineTemplate = z.infer<typeof insertPipelineTemplateSchema>;
