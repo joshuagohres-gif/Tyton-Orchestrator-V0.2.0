@@ -135,7 +135,7 @@ function MechanicalMesh({ component, selected, onClick }: {
           metalness={component.material === 'Aluminum' || component.material === 'Steel' ? 0.8 : 0.1}
           roughness={component.material === 'Aluminum' || component.material === 'Steel' ? 0.3 : 0.8}
         />
-        {selected && <Edges linewidth={2} color="#fbbf24" />}
+        {selected && <Edges color="#fbbf24" />}
       </mesh>
     </group>
   );
@@ -219,9 +219,10 @@ export default function Design3DViewer({ project }: Design3DViewerProps) {
     mutationFn: async () => {
       if (!selectedComponent) throw new Error('No component selected');
       
-      const response = await apiRequest('/api/projects/' + project.id + '/mechanical/generate', {
-        method: 'POST',
-        body: JSON.stringify({
+      const response = await apiRequest(
+        'POST',
+        '/api/projects/' + project.id + '/mechanical/generate',
+        {
           type: selectedComponent.type === 'housing' ? 'box' : selectedComponent.type,
           dimensions,
           material: { type: material },
@@ -230,8 +231,8 @@ export default function Design3DViewer({ project }: Design3DViewerProps) {
             filletRadius: 2.0
           },
           units: 'mm'
-        })
-      });
+        }
+      );
       
       if (!response.ok) {
         const error = await response.json();
