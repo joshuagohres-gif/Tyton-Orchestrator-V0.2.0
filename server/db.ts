@@ -2,6 +2,20 @@ import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from "@shared/schema";
 
+// Fix DATABASE_URL if it's incorrectly set to SQLite but PostgreSQL credentials are available
+if (process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('file:') && 
+    process.env.PGHOST && process.env.PGUSER && process.env.PGPASSWORD && process.env.PGDATABASE) {
+  console.log('🔧 Detected SQLite DATABASE_URL but PostgreSQL credentials available, constructing proper PostgreSQL URL...');
+  const pgHost = process.env.PGHOST;
+  const pgUser = process.env.PGUSER;
+  const pgPassword = process.env.PGPASSWORD;
+  const pgDatabase = process.env.PGDATABASE;
+  const pgPort = process.env.PGPORT || '5432';
+  
+  process.env.DATABASE_URL = `postgresql://${pgUser}:${pgPassword}@${pgHost}:${pgPort}/${pgDatabase}?sslmode=require`;
+  console.log('✅ DATABASE_URL corrected to PostgreSQL connection string');
+}
+
 if (!process.env.DATABASE_URL) {
   throw new Error(
     "DATABASE_URL must be set. Did you forget to provision a database?",

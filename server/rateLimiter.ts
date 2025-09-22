@@ -36,10 +36,6 @@ export const aiRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: any) => {
-    // Rate limit per user for authenticated requests
-    return req.user?.id || req.ip;
-  },
   handler: (req, res) => {
     logger.securityEvent("AI rate limit exceeded", "medium", {
       userId: (req as any).user?.id,
@@ -87,9 +83,6 @@ export const projectCreationRateLimit = rateLimit({
     error: "Project creation limit exceeded. Please try again later.",
     retryAfter: 60 * 60,
   },
-  keyGenerator: (req: any) => {
-    return req.user?.id || req.ip;
-  },
   handler: (req, res) => {
     logger.securityEvent("Project creation rate limit exceeded", "low", {
       userId: (req as any).user?.id,
@@ -110,9 +103,6 @@ export const uploadRateLimit = rateLimit({
   message: {
     error: "Upload limit exceeded. Please try again later.",
     retryAfter: 15 * 60,
-  },
-  keyGenerator: (req: any) => {
-    return req.user?.id || req.ip;
   },
 });
 
@@ -200,7 +190,7 @@ export function createCustomRateLimit(options: {
       error: options.message || "Rate limit exceeded",
       retryAfter: Math.ceil(options.windowMs / 1000),
     },
-    keyGenerator: options.keyGenerator || ((req: any) => req.user?.id || req.ip),
+    keyGenerator: options.keyGenerator,
     skip: options.condition ? (req) => !options.condition!(req) : undefined,
     handler: (req, res) => {
       logger.securityEvent("Custom rate limit exceeded", "medium", {
@@ -224,7 +214,7 @@ setInterval(() => {
   const now = Date.now();
   const cutoff = now - (24 * 60 * 60 * 1000); // 24 hours
 
-  for (const [userId, bucket] of aiTokenBuckets.entries()) {
+  for (const [userId, bucket] of Array.from(aiTokenBuckets.entries())) {
     // Remove buckets that haven't been used in 24 hours
     if ((bucket as any).lastRefill < cutoff) {
       aiTokenBuckets.delete(userId);

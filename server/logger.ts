@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { loggingConfig, config } from "./config";
 
 // Log levels
@@ -225,7 +226,7 @@ export const logger = new Logger();
 
 // Request ID middleware
 export function requestIdMiddleware(req: any, res: any, next: any) {
-  const requestId = require("crypto").randomUUID();
+  const requestId = crypto.randomUUID();
   req.requestId = requestId;
   res.setHeader("X-Request-ID", requestId);
 
