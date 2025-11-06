@@ -16,6 +16,7 @@ import {
   AddHoleParams,
   ExtrudeRegionParams
 } from "./shape-operations";
+import { selectUvRegion, computeTutteEmbeddingRobust } from "./tutte";
 
 /** ----------------- Utility: selection in UV ----------------- */
 
@@ -29,34 +30,28 @@ function selectRegionByUvBox(
   mesh: Mesh,
   uvBox: { uMin: number; uMax: number; vMin: number; vMax: number }
 ): Region {
-  const vset = new Set<number>();
-  for (const v of mesh.vertices) {
-    if (v.u >= uvBox.uMin && v.u <= uvBox.uMax && v.v >= uvBox.vMin && v.v <= uvBox.vMax) {
-      vset.add(v.id);
-    }
-  }
-
-  const faceIndices: number[] = [];
-  for (let fi = 0; fi < mesh.faces.length; fi++) {
-    const f = mesh.faces[fi];
-    if (f.every(id => vset.has(id))) faceIndices.push(fi);
-  }
-
-  // Ensure triangles (executor assumes tris)
-  const triangles: Array<[number, number, number]> = [];
-  for (const fi of faceIndices) {
-    const f = mesh.faces[fi];
-    if (f.length === 3) {
-      triangles.push([f[0], f[1], f[2]]);
-    } else {
-      // Simple fan triangulation fallback
-      for (let i = 1; i < f.length - 1; i++) {
-        triangles.push([f[0], f[i], f[i + 1]]);
+  // Use robust region selection with partial overlap support
+  // First, ensure mesh has UV coordinates
+  let embedding = new Map<number, { u: number; v: number }>();
+  
+  // Check if mesh already has UV
+  const hasUV = mesh.vertices.some(v => v.u !== undefined && v.v !== undefined);
+  
+  if (!hasUV) {
+    // Compute Tutte embedding if missing
+    const result = computeTutteEmbeddingRobust(mesh);
+    embedding = result.uv;
+  } else {
+    // Build embedding map from existing UV
+    for (const v of mesh.vertices) {
+      if (v.u !== undefined && v.v !== undefined) {
+        embedding.set(v.id, { u: v.u, v: v.v });
       }
     }
   }
-
-  return { vertexSet: vset, faceIndices, triangles };
+  
+  // Use robust region selection
+  return selectUvRegion(mesh, uvBox, embedding);
 }
 
 /** ----------------- Utility: boundary loops in UV ----------------- */
