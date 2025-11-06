@@ -482,6 +482,580 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Hardware Design Assistant Endpoints
+  
+  // Start initial design generation
+  app.post("/api/projects/:id/hardware-design/start", authenticateJWT, aiRateLimit, async (req: any, res) => {
+    try {
+      const { prompt } = req.body;
+      if (!prompt || typeof prompt !== 'string') {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Import hardware design service
+      const hardwareDesignService = await import("./services/hardwareDesign");
+
+      // Generate initial design
+      const initialDesign = await hardwareDesignService.generateInitialDesign(prompt);
+
+      // Check for hazardous content
+      const safetyCheck = hardwareDesignService.checkHazardousContent(JSON.stringify(initialDesign));
+      if (safetyCheck.hasConcerns) {
+        console.warn("Hazardous content detected:", safetyCheck.warnings);
+      }
+
+      // Create or update hardware design session
+      let session = await storage.getHardwareDesignSessionByProject(req.params.id);
+      if (session) {
+        session = await storage.updateHardwareDesignSession(session.id, {
+          initialPrompt: prompt,
+          initialDesign: initialDesign as any,
+          status: "initial_design"
+        });
+      } else {
+        session = await storage.createHardwareDesignSession({
+          projectId: req.params.id,
+          initialPrompt: prompt,
+          initialDesign: initialDesign as any,
+          status: "initial_design"
+        });
+      }
+
+      res.json({
+        sessionId: session.id,
+        initialDesign,
+        safetyWarnings: safetyCheck.warnings
+      });
+    } catch (error) {
+      console.error("Hardware design start error:", error);
+      res.status(500).json({ 
+        error: "Failed to start hardware design",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Refine design with feedback
+  app.post("/api/projects/:id/hardware-design/refine", authenticateJWT, aiRateLimit, async (req: any, res) => {
+    try {
+      const { feedback } = req.body;
+      if (!feedback || typeof feedback !== 'string') {
+        return res.status(400).json({ error: "Feedback is required" });
+      }
+
+      const session = await storage.getHardwareDesignSessionByProject(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Design session not found. Start a new design first." });
+      }
+
+      const hardwareDesignService = await import("./services/hardwareDesign");
+
+      // Generate refined design spec
+      const designSpec = await hardwareDesignService.generateRefinedDesignSpec(
+        session.initialPrompt || "",
+        feedback,
+        session.initialDesign
+      );
+
+      // Check for hazardous content
+      const safetyCheck = hardwareDesignService.checkHazardousContent(JSON.stringify(designSpec));
+
+      // Update session
+      const updatedSession = await storage.updateHardwareDesignSession(session.id, {
+        refinedFeedback: feedback,
+        designSpec: designSpec as any,
+        status: "refining"
+      });
+
+      res.json({
+        sessionId: updatedSession.id,
+        designSpec,
+        safetyWarnings: safetyCheck.warnings
+      });
+    } catch (error) {
+      console.error("Hardware design refine error:", error);
+      res.status(500).json({ 
+        error: "Failed to refine hardware design",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Generate master plan
+  app.post("/api/projects/:id/hardware-design/master-plan", authenticateJWT, aiRateLimit, async (req: any, res) => {
+    try {
+      const session = await storage.getHardwareDesignSessionByProject(req.params.id);
+      if (!session || !session.designSpec) {
+        return res.status(404).json({ error: "Design spec not found. Complete design refinement first." });
+      }
+
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const hardwareDesignService = await import("./services/hardwareDesign");
+
+      // Generate master plan
+      const masterPlanData = await hardwareDesignService.generateMasterPlan(
+        session.initialPrompt || project.description || "Hardware project",
+        session.designSpec as any
+      );
+
+      // Create or update master plan
+      let masterPlan = await storage.getMasterPlanByProject(req.params.id);
+      if (masterPlan) {
+        masterPlan = await storage.updateMasterPlan(masterPlan.id, {
+          version: (masterPlan.version || 1) + 1,
+          llmModel: "gpt-4o",
+          summary: masterPlanData.summary,
+          steps: masterPlanData.steps as any
+        });
+      } else {
+        masterPlan = await storage.createMasterPlan({
+          projectId: req.params.id,
+          version: 1,
+          llmModel: "gpt-4o",
+          summary: masterPlanData.summary,
+          steps: masterPlanData.steps as any
+        });
+      }
+
+      res.json({
+        masterPlanId: masterPlan.id,
+        masterPlan: {
+          ...masterPlanData,
+          id: masterPlan.id,
+          version: masterPlan.version
+        }
+      });
+    } catch (error) {
+      console.error("Master plan generation error:", error);
+      res.status(500).json({ 
+        error: "Failed to generate master plan",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Generate modules from design spec
+  app.post("/api/projects/:id/hardware-design/modules", authenticateJWT, aiRateLimit, async (req: any, res) => {
+    try {
+      const session = await storage.getHardwareDesignSessionByProject(req.params.id);
+      if (!session || !session.designSpec) {
+        return res.status(404).json({ error: "Design spec not found" });
+      }
+
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const hardwareDesignService = await import("./services/hardwareDesign");
+      const designSpec = session.designSpec as any;
+      
+      const createdModules: any[] = [];
+      const matchedComponents: any[] = [];
+      const unmatchedComponents: any[] = [];
+
+      // Process each component in design spec
+      for (const componentSpec of designSpec.components || []) {
+        try {
+          // Try to find matching component in database
+          let dbComponent = null;
+          
+          if (componentSpec.primaryMpn) {
+            const matches = await storage.searchComponents(componentSpec.primaryMpn);
+            if (matches.length > 0) {
+              dbComponent = matches[0];
+              matchedComponents.push({
+                name: componentSpec.name,
+                matched: true,
+                componentId: dbComponent.id
+              });
+            }
+          }
+
+          // If not matched, generate module with LLM
+          let moduleData;
+          if (!dbComponent) {
+            unmatchedComponents.push({ name: componentSpec.name });
+            
+            // Generate module from spec
+            moduleData = await hardwareDesignService.generateModuleFromSpec(componentSpec, {
+              projectSummary: session.initialPrompt || "",
+              designSpec: designSpec
+            });
+          } else {
+            // Create basic module data from matched component
+            moduleData = {
+              componentName: componentSpec.name,
+              type: dbComponent.category,
+              voltage: 3300, // Default, will be overridden if specified
+              pins: [
+                { name: "VCC", type: "power" as const, voltage: 3300 },
+                { name: "GND", type: "ground" as const }
+              ]
+            };
+          }
+
+          // Create design module
+          const designModule = await storage.createDesignModule({
+            projectId: req.params.id,
+            componentName: moduleData.componentName,
+            componentId: dbComponent?.id,
+            type: moduleData.type,
+            voltage: moduleData.voltage,
+            maxVoltage: moduleData.maxVoltage,
+            maxCurrent: moduleData.maxCurrent,
+            avgPowerDraw: moduleData.avgPowerDraw,
+            wifi: moduleData.wifi,
+            bluetooth: moduleData.bluetooth,
+            firmwareLanguage: moduleData.firmwareLanguage,
+            softwareLanguage: moduleData.softwareLanguage,
+            computeRating: moduleData.computeRating,
+            componentType: moduleData.componentType,
+            isMotorOrServo: hardwareDesignService.isMotorOrServo(moduleData),
+            notes: "",
+            position: { x: createdModules.length * 200 + 100, y: 200 }
+          });
+
+          // Create pins for the module
+          const createdPins = [];
+          for (let i = 0; i < moduleData.pins.length; i++) {
+            const pinData = moduleData.pins[i];
+            const pin = await storage.createDesignPin({
+              moduleId: designModule.id,
+              name: pinData.name,
+              type: pinData.type,
+              voltage: pinData.voltage,
+              maxVoltage: pinData.maxVoltage,
+              maxCurrent: pinData.maxCurrent,
+              notes: pinData.notes,
+              enabled: true,
+              layoutIndex: i,
+              connectionHints: pinData.connectionHints
+            });
+            createdPins.push(pin);
+          }
+
+          createdModules.push({
+            ...designModule,
+            pins: createdPins
+          });
+
+        } catch (componentError) {
+          console.error(`Failed to create module for ${componentSpec.name}:`, componentError);
+          unmatchedComponents.push({ 
+            name: componentSpec.name, 
+            error: componentError instanceof Error ? componentError.message : "Unknown error"
+          });
+        }
+      }
+
+      // Update session status
+      await storage.updateHardwareDesignSession(session.id, {
+        status: "modules_created"
+      });
+
+      res.json({
+        modules: createdModules,
+        summary: {
+          total: createdModules.length,
+          matched: matchedComponents.length,
+          unmatched: unmatchedComponents.length
+        },
+        matchedComponents,
+        unmatchedComponents
+      });
+    } catch (error) {
+      console.error("Module generation error:", error);
+      res.status(500).json({ 
+        error: "Failed to generate modules",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Enrich actuator/motor modules
+  app.post("/api/projects/:id/hardware-design/actuators", authenticateJWT, aiRateLimit, async (req: any, res) => {
+    try {
+      const modules = await storage.getDesignModules(req.params.id);
+      const actuatorModules = modules.filter(m => m.isMotorOrServo);
+
+      if (actuatorModules.length === 0) {
+        return res.json({ 
+          message: "No actuator modules found",
+          enrichedModules: []
+        });
+      }
+
+      const session = await storage.getHardwareDesignSessionByProject(req.params.id);
+      const hardwareDesignService = await import("./services/hardwareDesign");
+      
+      const enrichedModules = [];
+
+      for (const module of actuatorModules) {
+        try {
+          const enrichment = await hardwareDesignService.enrichActuatorModule(module, {
+            projectSummary: session?.initialPrompt || "Hardware project with actuators"
+          });
+
+          // Update module with servo/motor properties
+          const updated = await storage.updateDesignModule(module.id, {
+            servoMotorProps: enrichment.servoMotorProps as any
+          });
+
+          // Add additional pins if specified
+          if (enrichment.additionalPins && enrichment.additionalPins.length > 0) {
+            for (const pinData of enrichment.additionalPins) {
+              await storage.createDesignPin({
+                moduleId: module.id,
+                name: pinData.name,
+                type: pinData.type,
+                voltage: pinData.voltage,
+                maxVoltage: pinData.maxVoltage,
+                maxCurrent: pinData.maxCurrent,
+                notes: pinData.notes,
+                enabled: true,
+                connectionHints: pinData.connectionHints
+              });
+            }
+          }
+
+          // Create controller module if required
+          let controllerModule = null;
+          if (enrichment.controllerRequired && enrichment.controllerModule) {
+            const controllerData = enrichment.controllerModule;
+            const createdController = await storage.createDesignModule({
+              projectId: req.params.id,
+              componentName: controllerData.componentName,
+              type: controllerData.type,
+              voltage: controllerData.voltage,
+              maxVoltage: controllerData.maxVoltage,
+              maxCurrent: controllerData.maxCurrent,
+              notes: `Controller for ${module.componentName}`,
+              position: { x: (module.position as any)?.x + 250 || 300, y: (module.position as any)?.y || 200 }
+            });
+
+            // Create pins for controller
+            for (const pinData of controllerData.pins || []) {
+              await storage.createDesignPin({
+                moduleId: createdController.id,
+                name: pinData.name,
+                type: pinData.type,
+                voltage: pinData.voltage,
+                maxVoltage: pinData.maxVoltage,
+                maxCurrent: pinData.maxCurrent,
+                notes: pinData.notes,
+                enabled: true,
+                connectionHints: pinData.connectionHints
+              });
+            }
+
+            controllerModule = createdController;
+          }
+
+          enrichedModules.push({
+            module: updated,
+            enrichment,
+            controllerModule
+          });
+
+        } catch (enrichError) {
+          console.error(`Failed to enrich actuator ${module.componentName}:`, enrichError);
+        }
+      }
+
+      res.json({
+        enrichedModules,
+        summary: {
+          total: actuatorModules.length,
+          enriched: enrichedModules.length,
+          controllersAdded: enrichedModules.filter(e => e.controllerModule).length
+        }
+      });
+    } catch (error) {
+      console.error("Actuator enrichment error:", error);
+      res.status(500).json({ 
+        error: "Failed to enrich actuators",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Generate wiring connections
+  app.post("/api/projects/:id/hardware-design/wiring", authenticateJWT, aiRateLimit, async (req: any, res) => {
+    try {
+      const modules = await storage.getDesignModules(req.params.id);
+      
+      if (modules.length === 0) {
+        return res.status(400).json({ error: "No modules found. Create modules first." });
+      }
+
+      const session = await storage.getHardwareDesignSessionByProject(req.params.id);
+      const hardwareDesignService = await import("./services/hardwareDesign");
+
+      // Generate wiring
+      const wiringData = await hardwareDesignService.generateWiring(modules, {
+        projectSummary: session?.initialPrompt || "Hardware project",
+        designSpec: session?.designSpec as any || {}
+      });
+
+      // Create connections from wiring data
+      const createdConnections = [];
+      
+      for (const connData of wiringData.connections) {
+        // Find the pins by module name and pin name
+        const fromModule = modules.find(m => m.componentName === connData.fromModuleName);
+        const toModule = modules.find(m => m.componentName === connData.toModuleName);
+
+        if (!fromModule || !toModule) {
+          console.warn(`Modules not found for connection: ${connData.fromModuleName} -> ${connData.toModuleName}`);
+          continue;
+        }
+
+        const fromPin = fromModule.pins?.find(p => p.name === connData.fromPinName);
+        const toPin = toModule.pins?.find(p => p.name === connData.toPinName);
+
+        if (!fromPin || !toPin) {
+          console.warn(`Pins not found for connection: ${connData.fromPinName} -> ${connData.toPinName}`);
+          continue;
+        }
+
+        const connection = await storage.createDesignConnection({
+          projectId: req.params.id,
+          fromPinId: fromPin.id,
+          toPinId: toPin.id,
+          kind: connData.kind,
+          netName: connData.netName,
+          notes: connData.notes
+        });
+
+        createdConnections.push(connection);
+      }
+
+      // Update session status
+      await storage.updateHardwareDesignSession(session!.id, {
+        status: "complete"
+      });
+
+      res.json({
+        connections: createdConnections,
+        powerDistribution: wiringData.powerDistribution,
+        notes: wiringData.notes,
+        summary: {
+          totalConnections: createdConnections.length,
+          powerConnections: createdConnections.filter(c => c.kind === 'power').length,
+          groundConnections: createdConnections.filter(c => c.kind === 'ground').length,
+          signalConnections: createdConnections.filter(c => c.kind === 'signal').length
+        }
+      });
+    } catch (error) {
+      console.error("Wiring generation error:", error);
+      res.status(500).json({ 
+        error: "Failed to generate wiring",
+        details: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Get hardware design session
+  app.get("/api/projects/:id/hardware-design/session", async (req, res) => {
+    try {
+      const session = await storage.getHardwareDesignSessionByProject(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "No design session found" });
+      }
+      res.json(session);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch design session" });
+    }
+  });
+
+  // Get design modules for project
+  app.get("/api/projects/:id/hardware-design/modules", async (req, res) => {
+    try {
+      const modules = await storage.getDesignModules(req.params.id);
+      res.json(modules);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch modules" });
+    }
+  });
+
+  // Update design module
+  app.put("/api/projects/:projectId/hardware-design/modules/:id", async (req, res) => {
+    try {
+      const updates = req.body;
+      const module = await storage.updateDesignModule(req.params.id, updates);
+      res.json(module);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update module" });
+    }
+  });
+
+  // Update design pin
+  app.put("/api/projects/:projectId/hardware-design/pins/:id", async (req, res) => {
+    try {
+      const updates = req.body;
+      const pin = await storage.updateDesignPin(req.params.id, updates);
+      res.json(pin);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update pin" });
+    }
+  });
+
+  // Get design connections
+  app.get("/api/projects/:id/hardware-design/connections", async (req, res) => {
+    try {
+      const connections = await storage.getDesignConnections(req.params.id);
+      res.json(connections);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch connections" });
+    }
+  });
+
+  // Create design connection
+  app.post("/api/projects/:id/hardware-design/connections", async (req, res) => {
+    try {
+      const connection = await storage.createDesignConnection({
+        projectId: req.params.id,
+        ...req.body
+      });
+      res.status(201).json(connection);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create connection" });
+    }
+  });
+
+  // Delete design connection
+  app.delete("/api/projects/:projectId/hardware-design/connections/:id", async (req, res) => {
+    try {
+      await storage.deleteDesignConnection(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete connection" });
+    }
+  });
+
+  // Get master plan
+  app.get("/api/projects/:id/hardware-design/master-plan", async (req, res) => {
+    try {
+      const masterPlan = await storage.getMasterPlanByProject(req.params.id);
+      if (!masterPlan) {
+        return res.status(404).json({ error: "No master plan found" });
+      }
+      res.json(masterPlan);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch master plan" });
+    }
+  });
+
   // Health endpoints
   app.get("/api/health/live", async (req, res) => {
     const liveness = await monitoring.getLivenessCheck();

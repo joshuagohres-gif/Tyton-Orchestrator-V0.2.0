@@ -10,6 +10,11 @@ import {
   pipelineTemplates,
   stageDefinitions,
   mechanicalComponents,
+  hardwareDesignSessions,
+  masterPlans,
+  designModules,
+  designPins,
+  designConnections,
   type User, 
   type InsertUser,
   type Project,
@@ -28,7 +33,18 @@ import {
   type PipelineTemplate,
   type StageDefinition,
   type MechanicalComponent,
-  type InsertMechanicalComponent
+  type InsertMechanicalComponent,
+  type HardwareDesignSession,
+  type InsertHardwareDesignSession,
+  type MasterPlan,
+  type InsertMasterPlan,
+  type DesignModule,
+  type InsertDesignModule,
+  type DesignPin,
+  type InsertDesignPin,
+  type DesignConnection,
+  type InsertDesignConnection,
+  type DesignModuleWithPins
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, like, and, desc, asc } from "drizzle-orm";
@@ -86,6 +102,38 @@ export interface IStorage {
   createMechanicalComponent(component: InsertMechanicalComponent): Promise<MechanicalComponent>;
   updateMechanicalComponent(id: string, updates: Partial<MechanicalComponent>): Promise<MechanicalComponent>;
   deleteMechanicalComponent(id: string): Promise<void>;
+
+  // Hardware Design Sessions
+  getHardwareDesignSession(id: string): Promise<HardwareDesignSession | undefined>;
+  getHardwareDesignSessionByProject(projectId: string): Promise<HardwareDesignSession | undefined>;
+  createHardwareDesignSession(session: InsertHardwareDesignSession): Promise<HardwareDesignSession>;
+  updateHardwareDesignSession(id: string, updates: Partial<HardwareDesignSession>): Promise<HardwareDesignSession>;
+
+  // Master Plans
+  getMasterPlan(id: string): Promise<MasterPlan | undefined>;
+  getMasterPlanByProject(projectId: string): Promise<MasterPlan | undefined>;
+  createMasterPlan(plan: InsertMasterPlan): Promise<MasterPlan>;
+  updateMasterPlan(id: string, updates: Partial<MasterPlan>): Promise<MasterPlan>;
+
+  // Design Modules
+  getDesignModules(projectId: string): Promise<DesignModuleWithPins[]>;
+  getDesignModule(id: string): Promise<DesignModuleWithPins | undefined>;
+  createDesignModule(module: InsertDesignModule): Promise<DesignModule>;
+  updateDesignModule(id: string, updates: Partial<DesignModule>): Promise<DesignModule>;
+  deleteDesignModule(id: string): Promise<void>;
+
+  // Design Pins
+  getDesignPins(moduleId: string): Promise<DesignPin[]>;
+  getDesignPin(id: string): Promise<DesignPin | undefined>;
+  createDesignPin(pin: InsertDesignPin): Promise<DesignPin>;
+  updateDesignPin(id: string, updates: Partial<DesignPin>): Promise<DesignPin>;
+  deleteDesignPin(id: string): Promise<void>;
+
+  // Design Connections
+  getDesignConnections(projectId: string): Promise<DesignConnection[]>;
+  getDesignConnection(id: string): Promise<DesignConnection | undefined>;
+  createDesignConnection(connection: InsertDesignConnection): Promise<DesignConnection>;
+  deleteDesignConnection(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -438,6 +486,240 @@ export class DatabaseStorage implements IStorage {
   async deleteMechanicalComponent(id: string): Promise<void> {
     return this.withRetry(async () => {
       await db.delete(mechanicalComponents).where(eq(mechanicalComponents.id, id));
+    });
+  }
+
+  // Hardware Design Sessions
+  async getHardwareDesignSession(id: string): Promise<HardwareDesignSession | undefined> {
+    return this.withRetry(async () => {
+      const [session] = await db
+        .select()
+        .from(hardwareDesignSessions)
+        .where(eq(hardwareDesignSessions.id, id));
+      return session || undefined;
+    });
+  }
+
+  async getHardwareDesignSessionByProject(projectId: string): Promise<HardwareDesignSession | undefined> {
+    return this.withRetry(async () => {
+      const [session] = await db
+        .select()
+        .from(hardwareDesignSessions)
+        .where(eq(hardwareDesignSessions.projectId, projectId))
+        .orderBy(desc(hardwareDesignSessions.createdAt));
+      return session || undefined;
+    });
+  }
+
+  async createHardwareDesignSession(session: InsertHardwareDesignSession): Promise<HardwareDesignSession> {
+    return this.withRetry(async () => {
+      const [newSession] = await db
+        .insert(hardwareDesignSessions)
+        .values(session as any)
+        .returning();
+      return newSession;
+    });
+  }
+
+  async updateHardwareDesignSession(id: string, updates: Partial<HardwareDesignSession>): Promise<HardwareDesignSession> {
+    return this.withRetry(async () => {
+      const [updatedSession] = await db
+        .update(hardwareDesignSessions)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(hardwareDesignSessions.id, id))
+        .returning();
+      return updatedSession;
+    });
+  }
+
+  // Master Plans
+  async getMasterPlan(id: string): Promise<MasterPlan | undefined> {
+    return this.withRetry(async () => {
+      const [plan] = await db
+        .select()
+        .from(masterPlans)
+        .where(eq(masterPlans.id, id));
+      return plan || undefined;
+    });
+  }
+
+  async getMasterPlanByProject(projectId: string): Promise<MasterPlan | undefined> {
+    return this.withRetry(async () => {
+      const [plan] = await db
+        .select()
+        .from(masterPlans)
+        .where(eq(masterPlans.projectId, projectId))
+        .orderBy(desc(masterPlans.version), desc(masterPlans.createdAt));
+      return plan || undefined;
+    });
+  }
+
+  async createMasterPlan(plan: InsertMasterPlan): Promise<MasterPlan> {
+    return this.withRetry(async () => {
+      const [newPlan] = await db
+        .insert(masterPlans)
+        .values(plan as any)
+        .returning();
+      return newPlan;
+    });
+  }
+
+  async updateMasterPlan(id: string, updates: Partial<MasterPlan>): Promise<MasterPlan> {
+    return this.withRetry(async () => {
+      const [updatedPlan] = await db
+        .update(masterPlans)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(masterPlans.id, id))
+        .returning();
+      return updatedPlan;
+    });
+  }
+
+  // Design Modules
+  async getDesignModules(projectId: string): Promise<DesignModuleWithPins[]> {
+    return this.withRetry(async () => {
+      const modules = await db
+        .select()
+        .from(designModules)
+        .where(eq(designModules.projectId, projectId))
+        .orderBy(asc(designModules.createdAt));
+
+      // Fetch pins for each module
+      const modulesWithPins = await Promise.all(
+        modules.map(async (module) => {
+          const pins = await this.getDesignPins(module.id);
+          return { ...module, pins };
+        })
+      );
+
+      return modulesWithPins;
+    });
+  }
+
+  async getDesignModule(id: string): Promise<DesignModuleWithPins | undefined> {
+    return this.withRetry(async () => {
+      const [module] = await db
+        .select()
+        .from(designModules)
+        .where(eq(designModules.id, id));
+      
+      if (!module) return undefined;
+
+      const pins = await this.getDesignPins(module.id);
+      return { ...module, pins };
+    });
+  }
+
+  async createDesignModule(module: InsertDesignModule): Promise<DesignModule> {
+    return this.withRetry(async () => {
+      const [newModule] = await db
+        .insert(designModules)
+        .values(module as any)
+        .returning();
+      return newModule;
+    });
+  }
+
+  async updateDesignModule(id: string, updates: Partial<DesignModule>): Promise<DesignModule> {
+    return this.withRetry(async () => {
+      const [updatedModule] = await db
+        .update(designModules)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(designModules.id, id))
+        .returning();
+      return updatedModule;
+    });
+  }
+
+  async deleteDesignModule(id: string): Promise<void> {
+    return this.withRetry(async () => {
+      // Pins will be cascade deleted
+      await db.delete(designModules).where(eq(designModules.id, id));
+    });
+  }
+
+  // Design Pins
+  async getDesignPins(moduleId: string): Promise<DesignPin[]> {
+    return this.withRetry(async () => {
+      return await db
+        .select()
+        .from(designPins)
+        .where(eq(designPins.moduleId, moduleId))
+        .orderBy(asc(designPins.layoutIndex), asc(designPins.name));
+    });
+  }
+
+  async getDesignPin(id: string): Promise<DesignPin | undefined> {
+    return this.withRetry(async () => {
+      const [pin] = await db
+        .select()
+        .from(designPins)
+        .where(eq(designPins.id, id));
+      return pin || undefined;
+    });
+  }
+
+  async createDesignPin(pin: InsertDesignPin): Promise<DesignPin> {
+    return this.withRetry(async () => {
+      const [newPin] = await db
+        .insert(designPins)
+        .values(pin as any)
+        .returning();
+      return newPin;
+    });
+  }
+
+  async updateDesignPin(id: string, updates: Partial<DesignPin>): Promise<DesignPin> {
+    return this.withRetry(async () => {
+      const [updatedPin] = await db
+        .update(designPins)
+        .set(updates)
+        .where(eq(designPins.id, id))
+        .returning();
+      return updatedPin;
+    });
+  }
+
+  async deleteDesignPin(id: string): Promise<void> {
+    return this.withRetry(async () => {
+      await db.delete(designPins).where(eq(designPins.id, id));
+    });
+  }
+
+  // Design Connections
+  async getDesignConnections(projectId: string): Promise<DesignConnection[]> {
+    return this.withRetry(async () => {
+      return await db
+        .select()
+        .from(designConnections)
+        .where(eq(designConnections.projectId, projectId))
+        .orderBy(asc(designConnections.createdAt));
+    });
+  }
+
+  async getDesignConnection(id: string): Promise<DesignConnection | undefined> {
+    return this.withRetry(async () => {
+      const [connection] = await db
+        .select()
+        .from(designConnections)
+        .where(eq(designConnections.id, id));
+      return connection || undefined;
+    });
+  }
+
+  async createDesignConnection(connection: InsertDesignConnection): Promise<DesignConnection> {
+    return this.withRetry(async () => {
+      const [newConnection] = await db
+        .insert(designConnections)
+        .values(connection as any)
+        .returning();
+      return newConnection;
+    });
+  }
+
+  async deleteDesignConnection(id: string): Promise<void> {
+    return this.withRetry(async () => {
+      await db.delete(designConnections).where(eq(designConnections.id, id));
     });
   }
 }
