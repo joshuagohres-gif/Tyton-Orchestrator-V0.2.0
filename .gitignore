@@ -4,3 +4,16 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Electron build outputs
+release/
+*.AppImage
+*.deb
+*.rpm
+*.dmg
+*.exe
+*.snap
+
+# Electron cache
+.electron/
+.cache/
