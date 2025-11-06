@@ -10,6 +10,7 @@ import { insertProjectSchema, insertProjectModuleSchema, insertProjectConnection
 import { randomUUID } from "crypto";
 import { authenticateJWT, optionalAuth } from "./auth";
 import authRoutes from "./authRoutes";
+import hardwareDesignRoutes from "./routes/hardwareDesign";
 import { aiRateLimit, projectCreationRateLimit } from "./rateLimiter";
 import { logger } from "./logger";
 import { monitoring, trackingMiddleware } from "./monitoring";
@@ -20,6 +21,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register authentication routes
   app.use("/api/auth", authRoutes);
+  
+  // Register hardware design routes (Agent A - Hardware Design & Wiring Flow)
+  app.use("/api/ce", hardwareDesignRoutes);
 
   // Projects - Require authentication
   app.get("/api/projects", authenticateJWT, async (req: any, res) => {
