@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tyton.ai/schemas/hw.v1.json",
+  "title": "Tyton Hardware Design Contract v1",
+  "description": "Read-only JSON schema contract for hardware design data structures. Changes require a separate contracts PR.",
+  "definitions": {
+    "Module": {
+      "type": "object",
+      "required": ["id", "projectId", "componentName", "pins"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique module identifier" },
+        "projectId": { "type": "string", "description": "Project identifier" },
+        "componentName": { "type": "string", "description": "Human-readable component name" },
+        "componentId": { "type": ["string", "null"], "description": "Reference to components table, null if unmatched" },
+        "type": { "type": ["string", "null"], "description": "Component type (microcontroller, sensor, etc.)" },
+        "voltage": { "type": ["number", "null"], "description": "Operating voltage in millivolts" },
+        "maxVoltage": { "type": ["number", "null"], "description": "Maximum voltage in millivolts" },
+        "maxCurrent": { "type": ["number", "null"], "description": "Maximum current in milliamps" },
+        "avgPowerDraw": { "type": ["number", "null"], "description": "Average power draw in milliwatts" },
+        "wifi": { "type": ["boolean", "null"], "description": "Has WiFi capability" },
+        "bluetooth": { "type": ["boolean", "null"], "description": "Has Bluetooth capability" },
+        "firmwareLanguage": { "type": ["string", "null"], "description": "Firmware programming language" },
+        "softwareLanguage": { "type": ["string", "null"], "description": "Software programming language" },
+        "computeRating": { "type": ["number", "null"], "minimum": 1, "maximum": 10, "description": "Compute power rating (1=pocket calculator, 10=supercomputer)" },
+        "componentType": { "type": ["string", "null"], "description": "Specific component type" },
+        "isMotorOrServo": { "type": ["boolean", "null"], "default": false, "description": "Is this a motor or servo actuator" },
+        "servoMotorProps": {
+          "type": ["object", "null"],
+          "properties": {
+            "controlCompatibilityClass": { "type": ["string", "null"], "description": "Control compatibility class (e.g., Standard PWM Servo)" },
+            "rangeOfMotion": { "type": ["string", "null"], "description": "Range of motion (e.g., 0-180 degrees)" },
+            "torque": { "type": ["string", "null"], "description": "Torque rating" },
+            "controlType": { "type": ["string", "null"], "description": "Control signal type (PWM, I2C, SPI, etc.)" }
+          },
+          "additionalProperties": false,
+          "description": "Servo/motor specific properties"
+        },
+        "notes": { "type": ["string", "null"], "description": "Additional notes" },
+        "pinLayout": { "type": ["string", "null"], "description": "Physical pin layout description" },
+        "presets": { 
+          "type": "array", 
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Preset configuration names"
+        },
+        "pins": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Pin" },
+          "minItems": 1,
+          "description": "Array of pins for this module"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Pin": {
+      "type": "object",
+      "required": ["id", "moduleId", "name", "type", "enabled"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique pin identifier (prefix with moduleId for stability)" },
+        "moduleId": { "type": "string", "description": "Parent module identifier" },
+        "name": { "type": "string", "description": "Pin name (VCC, GND, GPIO0, etc.)" },
+        "type": { 
+          "type": "string", 
+          "enum": ["power", "ground", "io", "analog", "pwm", "communication", "other"],
+          "description": "Pin functional type"
+        },
+        "voltage": { "type": ["number", "null"], "description": "Pin voltage in millivolts" },
+        "maxVoltage": { "type": ["number", "null"], "description": "Maximum voltage in millivolts" },
+        "maxCurrent": { "type": ["number", "null"], "description": "Maximum current in milliamps" },
+        "notes": { "type": ["string", "null"], "description": "Pin-specific notes" },
+        "enabled": { "type": "boolean", "description": "Is this pin enabled for connections" },
+        "layoutIndex": { "type": ["number", "null"], "description": "Physical layout position index" },
+        "connectionHints": { 
+          "type": "array", 
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Hints for wiring this pin"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Connection": {
+      "type": "object",
+      "required": ["id", "projectId", "fromPinId", "toPinId", "kind"],
+      "properties": {
+        "id": { "type": "string", "description": "Unique connection identifier" },
+        "projectId": { "type": "string", "description": "Project identifier" },
+        "fromPinId": { "type": "string", "description": "Source pin identifier" },
+        "toPinId": { "type": "string", "description": "Destination pin identifier" },
+        "kind": { 
+          "type": "string", 
+          "enum": ["power", "signal", "ground", "bus"],
+          "description": "Connection kind"
+        },
+        "netName": { "type": ["string", "null"], "description": "Net name (e.g., 3V3, I2C_SDA)" },
+        "notes": { "type": ["string", "null"], "description": "Connection notes" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "version": { "const": 1, "description": "Schema version" },
+    "modules": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Module" },
+      "description": "Array of modules"
+    },
+    "connections": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Connection" },
+      "description": "Array of connections"
+    }
+  }
+}
