@@ -578,3 +578,226 @@ export type StageRetryPolicy = {
   backoffStrategy?: "linear" | "exponential";
   baseDelay?: number;
 };
+
+// Hardware Design Assistant Tables
+export const hardwareDesignSessions = pgTable("hardware_design_sessions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("draft"), // draft, initial_design, refining, modules_created, complete
+  initialPrompt: text("initial_prompt"),
+  initialDesign: jsonb("initial_design"), // Raw LLM response
+  refinedFeedback: text("refined_feedback"),
+  designSpec: jsonb("design_spec"), // Canonical JSON spec
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const masterPlans = pgTable("master_plans", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  version: integer("version").notNull().default(1),
+  llmModel: text("llm_model").notNull(),
+  summary: text("summary"),
+  steps: jsonb("steps").notNull(), // Array of MasterPlanStep
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const designModules = pgTable("design_modules", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  componentName: text("component_name").notNull(),
+  componentId: uuid("component_id").references(() => components.id), // Null if unmatched
+  type: text("type"), // microcontroller, sensor, etc.
+  voltage: integer("voltage"), // in millivolts
+  maxVoltage: integer("max_voltage"),
+  maxCurrent: integer("max_current"), // in milliamps
+  avgPowerDraw: integer("avg_power_draw"), // in milliwatts
+  wifi: boolean("wifi").default(false),
+  bluetooth: boolean("bluetooth").default(false),
+  firmwareLanguage: text("firmware_language"),
+  softwareLanguage: text("software_language"),
+  computeRating: integer("compute_rating"), // 1-10 scale
+  componentType: text("component_type"),
+  isMotorOrServo: boolean("is_motor_or_servo").default(false),
+  servoMotorProps: jsonb("servo_motor_props"), // { controlCompatibilityClass, rangeOfMotion }
+  notes: text("notes"),
+  position: jsonb("position"), // { x, y } for canvas
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const designPins = pgTable("design_pins", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  moduleId: uuid("module_id").notNull().references(() => designModules.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // power, ground, io, analog, pwm, communication, other
+  voltage: integer("voltage"), // in millivolts
+  maxVoltage: integer("max_voltage"),
+  maxCurrent: integer("max_current"), // in milliamps
+  notes: text("notes"),
+  enabled: boolean("enabled").notNull().default(true),
+  layoutIndex: integer("layout_index"), // For ordering
+  connectionHints: text("connection_hints").array(), // Hints for wiring
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const designConnections = pgTable("design_connections", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  fromPinId: uuid("from_pin_id").notNull().references(() => designPins.id, { onDelete: "cascade" }),
+  toPinId: uuid("to_pin_id").notNull().references(() => designPins.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // power, signal, ground, bus
+  netName: text("net_name"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Relations for Hardware Design tables
+export const hardwareDesignSessionsRelations = relations(hardwareDesignSessions, ({ one }) => ({
+  project: one(projects, {
+    fields: [hardwareDesignSessions.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const masterPlansRelations = relations(masterPlans, ({ one }) => ({
+  project: one(projects, {
+    fields: [masterPlans.projectId],
+    references: [projects.id],
+  }),
+}));
+
+export const designModulesRelations = relations(designModules, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [designModules.projectId],
+    references: [projects.id],
+  }),
+  component: one(components, {
+    fields: [designModules.componentId],
+    references: [components.id],
+  }),
+  pins: many(designPins),
+}));
+
+export const designPinsRelations = relations(designPins, ({ one, many }) => ({
+  module: one(designModules, {
+    fields: [designPins.moduleId],
+    references: [designModules.id],
+  }),
+  fromConnections: many(designConnections, { relationName: "fromPin" }),
+  toConnections: many(designConnections, { relationName: "toPin" }),
+}));
+
+export const designConnectionsRelations = relations(designConnections, ({ one }) => ({
+  project: one(projects, {
+    fields: [designConnections.projectId],
+    references: [projects.id],
+  }),
+  fromPin: one(designPins, {
+    fields: [designConnections.fromPinId],
+    references: [designPins.id],
+    relationName: "fromPin",
+  }),
+  toPin: one(designPins, {
+    fields: [designConnections.toPinId],
+    references: [designPins.id],
+    relationName: "toPin",
+  }),
+}));
+
+// Insert schemas
+export const insertHardwareDesignSessionSchema = createInsertSchema(hardwareDesignSessions).pick({
+  projectId: true,
+  status: true,
+  initialPrompt: true,
+  initialDesign: true,
+  refinedFeedback: true,
+  designSpec: true,
+});
+
+export const insertMasterPlanSchema = createInsertSchema(masterPlans).pick({
+  projectId: true,
+  version: true,
+  llmModel: true,
+  summary: true,
+  steps: true,
+});
+
+export const insertDesignModuleSchema = createInsertSchema(designModules).pick({
+  projectId: true,
+  componentName: true,
+  componentId: true,
+  type: true,
+  voltage: true,
+  maxVoltage: true,
+  maxCurrent: true,
+  avgPowerDraw: true,
+  wifi: true,
+  bluetooth: true,
+  firmwareLanguage: true,
+  softwareLanguage: true,
+  computeRating: true,
+  componentType: true,
+  isMotorOrServo: true,
+  servoMotorProps: true,
+  notes: true,
+  position: true,
+});
+
+export const insertDesignPinSchema = createInsertSchema(designPins).pick({
+  moduleId: true,
+  name: true,
+  type: true,
+  voltage: true,
+  maxVoltage: true,
+  maxCurrent: true,
+  notes: true,
+  enabled: true,
+  layoutIndex: true,
+  connectionHints: true,
+});
+
+export const insertDesignConnectionSchema = createInsertSchema(designConnections).pick({
+  projectId: true,
+  fromPinId: true,
+  toPinId: true,
+  kind: true,
+  netName: true,
+  notes: true,
+});
+
+// Types
+export type InsertHardwareDesignSession = z.infer<typeof insertHardwareDesignSessionSchema>;
+export type HardwareDesignSession = typeof hardwareDesignSessions.$inferSelect;
+export type InsertMasterPlan = z.infer<typeof insertMasterPlanSchema>;
+export type MasterPlan = typeof masterPlans.$inferSelect;
+export type InsertDesignModule = z.infer<typeof insertDesignModuleSchema>;
+export type DesignModule = typeof designModules.$inferSelect;
+export type InsertDesignPin = z.infer<typeof insertDesignPinSchema>;
+export type DesignPin = typeof designPins.$inferSelect;
+export type InsertDesignConnection = z.infer<typeof insertDesignConnectionSchema>;
+export type DesignConnection = typeof designConnections.$inferSelect;
+
+// Extended types with relations
+export type DesignModuleWithPins = DesignModule & {
+  pins?: DesignPin[];
+  component?: Component;
+};
+
+// TypeScript-only types for application logic (not persisted)
+export type PinType = "power" | "ground" | "io" | "analog" | "pwm" | "communication" | "other";
+
+export type MasterPlanStep = {
+  id: string;
+  label: string;
+  subsystem?: string;
+  status: "todo" | "in_progress" | "done";
+  dependsOn: string[];
+  notes?: string;
+};
+
+export type ServoMotorProps = {
+  controlCompatibilityClass?: string;
+  rangeOfMotion?: string;
+};
