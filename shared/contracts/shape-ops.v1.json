@@ -1,0 +1,218 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Shape Operations Contract v1",
+  "description": "Contract for geometric shape operations on meshes",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Operation"
+      }
+    }
+  },
+  "required": ["schemaVersion", "operations"],
+  "definitions": {
+    "Operation": {
+      "type": "object",
+      "required": ["opId", "type", "description", "target", "params", "priority"],
+      "properties": {
+        "opId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["add_hole", "extrude_region", "round_corner", "add_vents", "add_ribs"]
+        },
+        "description": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/definitions/UvRegionTarget"
+        },
+        "params": {
+          "oneOf": [
+            { "$ref": "#/definitions/AddHoleParams" },
+            { "$ref": "#/definitions/ExtrudeRegionParams" },
+            { "$ref": "#/definitions/RoundCornerParams" },
+            { "$ref": "#/definitions/AddVentsParams" },
+            { "$ref": "#/definitions/AddRibsParams" }
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "notes": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "additionalProperties": false
+    },
+    "UvRegionTarget": {
+      "type": "object",
+      "required": ["kind", "uvBox"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "uv_region"
+        },
+        "uvBox": {
+          "type": "object",
+          "required": ["uMin", "uMax", "vMin", "vMax"],
+          "properties": {
+            "uMin": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "uMax": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "vMin": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "vMax": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "AddHoleParams": {
+      "type": "object",
+      "required": ["shape", "diameterMm", "throughAll", "normalDirection"],
+      "properties": {
+        "shape": {
+          "type": "string",
+          "enum": ["circular", "rectangular", "custom"]
+        },
+        "diameterMm": {
+          "type": "number",
+          "minimum": 0.1
+        },
+        "throughAll": {
+          "type": "boolean"
+        },
+        "normalDirection": {
+          "type": "string",
+          "enum": ["outward_surface_normal", "inward_surface_normal", "axis_x", "axis_y", "axis_z"]
+        },
+        "offsetFromRegionCenterMm": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "chamferEntranceMm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "chamferExitMm": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExtrudeRegionParams": {
+      "type": "object",
+      "required": ["mode", "direction", "heightMm", "capType"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["solid", "shell"]
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["outward_surface_normal", "inward_surface_normal", "axis_x", "axis_y", "axis_z"]
+        },
+        "heightMm": {
+          "type": "number",
+          "minimum": 0.1
+        },
+        "taperAngleDegrees": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 89
+        },
+        "capType": {
+          "type": "string",
+          "enum": ["flat", "rounded"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoundCornerParams": {
+      "type": "object",
+      "required": ["radiusMm"],
+      "properties": {
+        "radiusMm": {
+          "type": "number",
+          "minimum": 0.1
+        }
+      },
+      "additionalProperties": false
+    },
+    "AddVentsParams": {
+      "type": "object",
+      "required": ["pattern", "holeDiameterMm", "spacingMm"],
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "enum": ["grid", "hexagonal", "linear"]
+        },
+        "holeDiameterMm": {
+          "type": "number",
+          "minimum": 0.1
+        },
+        "spacingMm": {
+          "type": "number",
+          "minimum": 0.1
+        }
+      },
+      "additionalProperties": false
+    },
+    "AddRibsParams": {
+      "type": "object",
+      "required": ["widthMm", "heightMm", "pattern"],
+      "properties": {
+        "widthMm": {
+          "type": "number",
+          "minimum": 0.1
+        },
+        "heightMm": {
+          "type": "number",
+          "minimum": 0.1
+        },
+        "pattern": {
+          "type": "string",
+          "enum": ["radial", "linear", "grid"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

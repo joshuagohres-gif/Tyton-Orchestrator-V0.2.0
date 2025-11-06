@@ -13,6 +13,7 @@ import authRoutes from "./authRoutes";
 import { aiRateLimit, projectCreationRateLimit } from "./rateLimiter";
 import { logger } from "./logger";
 import { monitoring, trackingMiddleware } from "./monitoring";
+import { registerShapeOpsRoutes } from "./routes/shapeOps";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Add request tracking middleware
@@ -20,6 +21,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register authentication routes
   app.use("/api/auth", authRoutes);
+
+  // Register shape operations routes
+  registerShapeOpsRoutes(app);
 
   // Projects - Require authentication
   app.get("/api/projects", authenticateJWT, async (req: any, res) => {
