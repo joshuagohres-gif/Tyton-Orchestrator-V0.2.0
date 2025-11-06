@@ -580,14 +580,79 @@ export function computeTutteEmbedding(mesh: Mesh): Map<number, TutteEmbedding> {
 }
 
 /**
- * Check if triangle intersects UV box (partial overlap support)
+ * SAT (Separating Axis Theorem) test for triangle-box intersection
+ * Higher precision than AABB test
+ */
+function satTriangleBox(
+  pts: number[][],
+  box: { uMin: number; uMax: number; vMin: number; vMax: number }
+): boolean {
+  // Box corners
+  const boxCorners = [
+    [box.uMin, box.vMin],
+    [box.uMax, box.vMin],
+    [box.uMax, box.vMax],
+    [box.uMin, box.vMax],
+  ];
+
+  // Test axes: triangle edges and box edges
+  const axes: number[][] = [];
+
+  // Triangle edge normals
+  for (let i = 0; i < 3; i++) {
+    const p0 = pts[i];
+    const p1 = pts[(i + 1) % 3];
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    // Normal (perpendicular)
+    const len = Math.hypot(dx, dy);
+    if (len > 1e-10) {
+      axes.push([-dy / len, dx / len]);
+    }
+  }
+
+  // Box edge normals (axis-aligned)
+  axes.push([1, 0]); // Horizontal
+  axes.push([0, 1]); // Vertical
+
+  // Project and test separation
+  for (const axis of axes) {
+    // Project triangle
+    let triMin = Infinity;
+    let triMax = -Infinity;
+    for (const pt of pts) {
+      const proj = pt[0] * axis[0] + pt[1] * axis[1];
+      triMin = Math.min(triMin, proj);
+      triMax = Math.max(triMax, proj);
+    }
+
+    // Project box
+    let boxMin = Infinity;
+    let boxMax = -Infinity;
+    for (const corner of boxCorners) {
+      const proj = corner[0] * axis[0] + corner[1] * axis[1];
+      boxMin = Math.min(boxMin, proj);
+      boxMax = Math.max(boxMax, proj);
+    }
+
+    // Check separation
+    if (triMax < boxMin || triMin > boxMax) {
+      return false; // Separated on this axis
+    }
+  }
+
+  return true; // No separation found, must intersect
+}
+
+/**
+ * Check if triangle intersects UV box (partial overlap support with SAT)
  */
 function triIntersectsUvBox(
   uv: Float64Array,
   tri: [number, number, number],
   box: { uMin: number; uMax: number; vMin: number; vMax: number }
 ): boolean {
-  // Fast AABB test
+  // Fast AABB test first
   const pts = tri.map((i) => [uv[2 * i], uv[2 * i + 1]]);
   const umin = Math.min(pts[0][0], pts[1][0], pts[2][0]);
   const umax = Math.max(pts[0][0], pts[1][0], pts[2][0]);
@@ -605,8 +670,8 @@ function triIntersectsUvBox(
     }
   }
 
-  // TODO: Add SAT test for higher precision
-  return true;
+  // SAT test for higher precision
+  return satTriangleBox(pts, box);
 }
 
 /**

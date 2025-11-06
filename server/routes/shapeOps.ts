@@ -8,7 +8,7 @@
 import type { Express, Request, Response } from "express";
 import OpenAI from "openai";
 import { z } from "zod";
-import { openAIConfig } from "../config";
+import { openAIConfig, config } from "../config";
 import { logger } from "../logger";
 import { aiRateLimit } from "../rateLimiter";
 import type {
@@ -206,6 +206,86 @@ function repairOperationEnvelope(
   }
 }
 
+// ===== NATIVE MODEL INTEGRATION =====
+
+const NATIVE_GEOM_MODEL_ENABLED = process.env.NATIVE_GEOM_MODEL === "true";
+const NATIVE_GEOM_SERVICE_URL = process.env.NATIVE_GEOM_SERVICE_URL || "http://localhost:8001";
+const NATIVE_CONFIDENCE_THRESHOLD = parseFloat(process.env.NATIVE_CONFIDENCE_THRESHOLD || "0.7");
+
+async function refineWithNativeModel(
+  mesh: Mesh,
+  operation: Operation
+): Promise<Operation | null> {
+  if (!NATIVE_GEOM_MODEL_ENABLED) {
+    return null;
+  }
+
+  try {
+    // Prepare request
+    const refineRequest = {
+      mesh: {
+        vertices: mesh.vertices.map((v) => [v.x, v.y, v.z]),
+        faces: mesh.faces,
+        uv: mesh.vertices.map((v) => [v.u, v.v]),
+      },
+      proposal: {
+        uv_box: operation.target.uvBox,
+        op_type: operation.type,
+        rough_params: operation.params,
+      },
+    };
+
+    // Call native-geo service
+    const response = await fetch(`${NATIVE_GEOM_SERVICE_URL}/refine`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(refineRequest),
+    });
+
+    if (!response.ok) {
+      logger.warn("Native model refinement failed", {
+        status: response.status,
+        statusText: response.statusText,
+      });
+      return null;
+    }
+
+    const refineResult = await response.json();
+
+    // Check confidence threshold
+    if (refineResult.confidence < NATIVE_CONFIDENCE_THRESHOLD) {
+      logger.info("Native model confidence below threshold", {
+        confidence: refineResult.confidence,
+        threshold: NATIVE_CONFIDENCE_THRESHOLD,
+      });
+      return null;
+    }
+
+    // Merge refined params
+    const refinedOp: Operation = {
+      ...operation,
+      params: {
+        ...operation.params,
+        ...refineResult.params,
+      },
+    };
+
+    logger.info("Native model refinement applied", {
+      opId: operation.opId,
+      confidence: refineResult.confidence,
+    });
+
+    return refinedOp;
+  } catch (error) {
+    logger.error(
+      "Native model refinement error",
+      {},
+      error instanceof Error ? error : new Error(String(error))
+    );
+    return null;
+  }
+}
+
 // ===== ROUTE HANDLER =====
 
 export function registerShapeOpsRoutes(app: Express): void {
@@ -267,7 +347,7 @@ export function registerShapeOpsRoutes(app: Express): void {
         }
 
         // Repair and validate
-        const repaired = repairOperationEnvelope(
+        let repaired = repairOperationEnvelope(
           parsed,
           request.allowedOperationTypes
         );
@@ -277,6 +357,19 @@ export function registerShapeOpsRoutes(app: Express): void {
             error: "LLM response failed validation and repair",
             received: parsed,
           });
+        }
+
+        // Refine with native model if enabled
+        if (NATIVE_GEOM_MODEL_ENABLED && request.mesh) {
+          const refinedOps: Operation[] = [];
+          for (const op of repaired.operations) {
+            const refined = await refineWithNativeModel(request.mesh, op);
+            refinedOps.push(refined || op);
+          }
+          repaired = {
+            ...repaired,
+            operations: refinedOps,
+          };
         }
 
         // Return validated envelope
