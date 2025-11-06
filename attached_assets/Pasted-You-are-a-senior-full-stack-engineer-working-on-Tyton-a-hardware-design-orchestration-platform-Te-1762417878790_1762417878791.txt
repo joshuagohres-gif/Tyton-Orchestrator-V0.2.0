@@ -1,0 +1,349 @@
+You are a senior full-stack engineer working on Tyton, a hardware design orchestration platform.
+
+Tech stack & context (assume these are available in the repo you’ll see):
+
+Backend: Node.js + Express, Creation Engine and Orchestrator pipeline (orchestrator/pipeline-improved.js etc.).
+
+Frontend: Next.js Tyton Orchestrator app using React + React Flow for EDA-style views.
+
+Existing services: services/spec.js, decompose.js, sourcing.js, compat.js, wiring.js, firmware.js, cad.js, sim.js, docs.js.
+
+Improved pipeline infrastructure: LockManager, CheckpointManager, DataValidator, ArtifactStorage.
+
+Persistent state is currently in a JSON data file (or equivalent), managed atomically via the improved pipeline.
+
+High-level goal
+
+Implement a new “Hardware Design Assistant” flow for the Tyton Orchestrator that:
+
+Accepts a user prompt describing a hardware product idea.
+
+Calls an LLM to:
+
+Generate an initial design: design considerations, part options (2–3 alternates per part), rough dimensions, cost.
+
+Accepts user feedback and calls the LLM again to:
+
+Produce a canonical JSON design spec (components + alternates, connectors/wires, footprint dimensions, final refined design prompt).
+
+Calls the LLM to generate a Master Plan for the project:
+
+A list of structured steps/subsystems to be executed incrementally.
+
+Creates Module and Pin objects for the project:
+
+For each component, cross-reference Tyton’s component database.
+
+If a matching Component exists, create a Module linked to it.
+
+If unmatched, prompt the LLM for module JSON with the module schema and create it.
+
+Implements a servo/motor pathway:
+
+For modules identified as servo/motor, query LLM for motor control requirements:
+
+control IC, compatibility class, range of motion, pins.
+
+Create/augment modules & pins accordingly; add control modules if required.
+
+Exposes the modules and pins to the React Flow canvas in the Orchestrator frontend:
+
+Each module → node.
+
+Each pin → labelled handle/port (or child node).
+
+Users can open a module and:
+
+toggle pins on/off,
+
+edit notes,
+
+optionally rename pins.
+
+Implements a “Wire connections” feature:
+
+Button that triggers an LLM-assisted wiring step.
+
+Backend walks modules and pins, asks the LLM which pins should connect together.
+
+Creates Connection objects (with references to pin IDs) until all necessary pins have connections.
+
+Returns these connections to the frontend to be displayed as edges in React Flow.
+
+Data modeling requirements
+
+Introduce the following data structures in a type-safe, centralized way (e.g. types.ts or equivalent) and persist them in the existing data model under each Creation Engine project.
+
+MasterPlan
+
+type MasterPlanStep = {
+  id: string;
+  label: string;
+  subsystem?: string;
+  status: "todo" | "in_progress" | "done";
+  dependsOn: string[];
+  notes?: string;
+};
+
+type MasterPlan = {
+  projectId: string;
+  version: number;
+  createdAt: number;
+  updatedAt: number;
+  llmModel: string;
+  summary: string;
+  steps: MasterPlanStep[];
+};
+
+
+Module and Pin
+
+type PinType = "power" | "ground" | "io" | "analog" | "pwm" | "communication" | "other";
+
+type Pin = {
+  id: string;
+  moduleId: string;
+  name: string;
+  type: PinType;
+  voltage?: number;
+  maxVoltage?: number;
+  maxCurrent?: number;
+  notes?: string;
+  enabled: boolean;
+  layoutIndex?: number;
+  connectionHints?: string[];
+};
+
+type Module = {
+  id: string;
+  projectId: string;
+  componentName: string;
+  componentId?: string;
+  type?: string;
+  voltage?: number;
+  maxVoltage?: number;
+  maxCurrent?: number;
+  avgPowerDraw?: number;
+  wifi?: boolean;
+  bluetooth?: boolean;
+  firmwareLanguage?: string;
+  softwareLanguage?: string;
+  computeRating?: number;
+  componentType?: string;
+  isMotorOrServo?: boolean;
+  servoMotorProps?: {
+    controlCompatibilityClass?: string;
+    rangeOfMotion?: string;
+  };
+  notes?: string;
+  pins: Pin[];
+};
+
+
+Connection
+
+type Connection = {
+  id: string;
+  projectId: string;
+  fromPinId: string;
+  toPinId: string;
+  kind: "power" | "signal" | "ground" | "bus";
+  netName?: string;
+  notes?: string;
+};
+
+Backend API endpoints
+
+Implement new endpoints under the Creation Engine / Orchestrator API, roughly:
+
+POST /api/ce/projects/:id/hardware-design/start
+
+Input: { prompt: string }
+
+Action:
+
+Call LLM with prompt:
+
+“You are a product design engineering consultant for a hardware project. Provide a list of design considerations, part selections (2-3 options per part, ranked), estimated dimensions, and estimated cost. Create this list with the intent of receiving customer feedback to refine the design. Design prompt: [USER_PROMPT]”
+
+Save the raw LLM response and a normalized version as initialDesign.
+
+Output: normalized design for display.
+
+POST /api/ce/projects/:id/hardware-design/refine
+
+Input: { feedback: string }
+
+Action:
+
+Call the LLM with prompt:
+
+“Feedback: [FEEDBACK]. Refine the design according to the received feedback and return a JSON with a list of each component and its alternates, a list and count of connectors/wires, and the dimensions of the device footprint. Send back the final refined design prompt in a single JSON file.”
+
+Validate against a JSON schema; if invalid, run a “fix JSON” retry.
+
+Save as designSpec.
+
+Output: canonical spec JSON.
+
+POST /api/ce/projects/:id/hardware-design/master-plan
+
+Action:
+
+Call LLM to generate a MasterPlan given the project summary + designSpec.
+
+Validate/normalize, assign version = 1.
+
+Output: MasterPlan.
+
+POST /api/ce/projects/:id/hardware-design/modules
+
+Action:
+
+Cross-reference designSpec.components against existing Component DB (using the Sourcing service / component cache).
+
+For matches: create Module instances linked to componentId.
+
+For unmatched components: call LLM to generate module JSON that conforms to the Module schema (including pin definitions).
+
+Output: list of modules and a summary of matched vs unmatched components.
+
+POST /api/ce/projects/:id/hardware-design/actuators
+
+Action:
+
+Identify modules that are motors/servos.
+
+For each, call LLM to enrich with:
+
+servoMotorProps
+
+controller/driver modules if needed
+
+additional pins.
+
+Output: updated actuator modules.
+
+POST /api/ce/projects/:id/hardware-design/wiring
+
+Action:
+
+Take the current Modules + Pins from the DB (source of truth).
+
+Call LLM with a prompt that:
+
+Describes the goal (connect power, ground, communication buses, etc.).
+
+Requests a list of nets or connections referencing pin IDs or pin names.
+
+Validate and normalize into Connection[].
+
+Output: list of connections.
+
+All new write operations must be integrated with the improved pipeline’s lock/checkpoint machinery so concurrent runs don’t corrupt data.
+
+Frontend work (Next.js + React Flow)
+
+Create a Design Wizard + Canvas integration:
+
+New “Hardware Design” panel per project:
+
+Step 1: User prompt → calls /hardware-design/start.
+
+Step 2: Show initial design; collect feedback → calls /hardware-design/refine.
+
+Step 3: “Generate modules” button → calls /hardware-design/master-plan then /modules.
+
+Step 4: “Open in canvas” → loads modules and pins and renders them into React Flow.
+
+React Flow integration:
+
+Create node types for:
+
+Generic module
+
+Possibly specialized nodes for MCU, power supply, motors, etc.
+
+Each node shows:
+
+Component name
+
+Small list of key props (voltage, computeRating, wifi, etc.).
+
+Pin representation:
+
+At minimum, each pin is a React Flow handle with label (name + type).
+
+Sidebar / node inspector:
+
+Ability to:
+
+toggle enabled
+
+edit notes
+
+(optional) rename pins.
+
+Persistent save via dedicated PUT endpoints.
+
+“Wire connections” button in canvas:
+
+Calls /hardware-design/wiring.
+
+Receives Connection[].
+
+For each Connection, draw an edge between the appropriate pin handles.
+
+Allow users to:
+
+manually remove edges (DELETE connection endpoint),
+
+add new edges (POST connection endpoint).
+
+Non-functional requirements
+
+Robust JSON handling:
+
+Use a schema validator (AJV or Zod) for all LLM responses.
+
+Implement at least one “repair JSON” retry pathway.
+
+Resilience:
+
+Integrate with LockManager and CheckpointManager for pipeline-like steps.
+
+Safety:
+
+Reuse hazardous keyword checks on:
+
+refined design specs
+
+module notes
+
+wiring outputs (e.g., high-voltage mention).
+
+Extensibility:
+
+Version data structures with e.g. schemaVersion fields.
+
+Keep endpoints and types forward-compatible.
+
+How to proceed
+
+Implement in small, testable increments:
+
+Add types and basic storage for MasterPlan, Module, Pin, Connection.
+
+Implement /hardware-design/start and /hardware-design/refine endpoints and associated LLM call helpers, with JSON schema validation.
+
+Implement master-plan and modules endpoints, integrating with component DB.
+
+Add basic React Flow visualization of modules + pins from stored data.
+
+Add actuator enrichment endpoint and hook it into the modules step.
+
+Implement wiring endpoint and frontend “Wire connections” button.
+
+Integrate with the improved pipeline and checkpoints where appropriate.
+
+Write unit tests for each backend service and a couple of integration tests for the full flow: prompt → refine → modules → wiring.
