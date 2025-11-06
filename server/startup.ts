@@ -8,7 +8,15 @@ export async function initializeApplication() {
   try {
     // 1. Run database migrations
     logger.info("📊 Running database migrations...");
-    await runMigrations();
+    try {
+      await runMigrations();
+    } catch (error: any) {
+      if (error?.message?.includes("already exists")) {
+        logger.info("✅ Database tables already exist, skipping migrations");
+      } else {
+        throw error;
+      }
+    }
 
     // 2. Create mock user in development
     if (config.NODE_ENV === "development" && config.ENABLE_MOCK_DATA) {
