@@ -88,6 +88,17 @@ export async function hashPassword(password: string): Promise<string> {
 
 // Middleware to check if user is authenticated via JWT
 export function authenticateJWT(req: Request, res: Response, next: NextFunction) {
+  // Development bypass: Auto-authenticate with mock user when ENABLE_MOCK_DATA is true
+  // This allows frontend to work without implementing login flow during development
+  if (process.env.ENABLE_MOCK_DATA === 'true' && process.env.NODE_ENV === 'development') {
+    req.user = {
+      id: '550e8400-e29b-41d4-a716-446655440000', // Mock user ID from createMockUser
+      email: 'demo@example.com',
+      username: 'demo'
+    };
+    return next();
+  }
+
   const token = req.headers.authorization?.split(" ")[1]; // Bearer <token>
 
   if (!token) {
